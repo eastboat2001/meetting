@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI英雄汇会议室预定系统</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <symbol
+        id="icon-clock-3"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 6v6h4" />
+      </symbol>
+      <symbol
+        id="icon-info"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4" />
+        <path d="M12 8h.01" />
+      </symbol>
+      <symbol
+        id="icon-calendar-days"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
+        <rect width="18" height="18" x="3" y="4" rx="2" />
+        <path d="M3 10h18" />
+        <path d="M8 14h.01" />
+        <path d="M12 14h.01" />
+        <path d="M16 14h.01" />
+        <path d="M8 18h.01" />
+        <path d="M12 18h.01" />
+        <path d="M16 18h.01" />
+      </symbol>
+      <symbol
+        id="icon-users"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <path d="M16 3.128a4 4 0 0 1 0 7.744" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <circle cx="9" cy="7" r="4" />
+      </symbol>
+      <symbol
+        id="icon-monitor"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect width="20" height="14" x="2" y="3" rx="2" />
+        <line x1="8" x2="16" y1="21" y2="21" />
+        <line x1="12" x2="12" y1="17" y2="21" />
+      </symbol>
+      <symbol
+        id="icon-video"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" />
+        <rect x="2" y="6" width="14" height="12" rx="2" />
+      </symbol>
+      <symbol
+        id="icon-wifi"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 20h.01" />
+        <path d="M2 8.82a15 15 0 0 1 20 0" />
+        <path d="M5 12.859a10 10 0 0 1 14 0" />
+        <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+      </symbol>
+    </svg>
+    <main class="app-shell">
+      <aside class="status-panel" aria-label="Room status panel">
+        <section class="brand-block">
+          <button
+            id="data-menu-btn"
+            class="brand-settings-btn"
+            type="button"
+            aria-label="Data management"
+            title="Data Management / 数据管理"
+          >
+            ⚙
+          </button>
+          <h1 id="app-name">AI英雄汇</h1>
+          <span id="room-status" class="status-pill status-available">
+            <span class="status-dot"></span>
+            <span>Available / 空闲</span>
+          </span>
+        </section>
+
+        <section class="clock-block" aria-live="polite">
+          <div id="current-time" class="current-time">--:--</div>
+          <p id="date-en" class="date-line">--.--</p>
+          <p id="date-cn" class="date-line muted">--月--日 星期-</p>
+        </section>
+
+        <section class="holiday-card" aria-labelledby="holiday-title">
+          <div class="card-title-row">
+            <span class="icon-box" aria-hidden="true">
+              <svg class="ui-icon" focusable="false">
+                <use href="#icon-calendar-days"></use>
+              </svg>
+            </span>
+            <h2 id="holiday-title">Upcoming Holidays / 即将到来的节假日</h2>
+          </div>
+          <div id="holiday-list" class="holiday-list"></div>
+        </section>
+      </aside>
+
+      <section class="main-panel">
+        <header class="top-actions">
+          <button id="book-room-btn" class="btn btn-primary" type="button">
+            <span aria-hidden="true">＋</span>
+            <span>Book Room / 预订</span>
+          </button>
+        </header>
+
+        <section class="schedule-card" aria-labelledby="schedule-title">
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th scope="col">Time / 时间</th>
+                <th scope="col" id="schedule-title">Meeting Name / 会议名称</th>
+                <th scope="col">Booker / 预订人</th>
+              </tr>
+            </thead>
+            <tbody id="schedule-body"></tbody>
+          </table>
+        </section>
+
+        <section class="info-grid" aria-label="Room summary">
+          <article class="info-card" aria-labelledby="next-meeting-title">
+            <div class="card-heading">
+              <div>
+                <h2 id="next-meeting-title">NEXT MEETING</h2>
+                <p>下一场会议</p>
+              </div>
+              <span class="card-icon blue" aria-hidden="true">
+                <svg class="ui-icon" focusable="false">
+                  <use href="#icon-clock-3"></use>
+                </svg>
+              </span>
+            </div>
+            <div id="next-meeting-content" class="next-content"></div>
+          </article>
+
+          <article class="info-card" aria-labelledby="room-details-title">
+            <div class="card-heading">
+              <div>
+                <h2 id="room-details-title">ROOM DETAILS</h2>
+                <p>会议室详情</p>
+              </div>
+              <span class="card-icon green" aria-hidden="true">
+                <svg class="ui-icon" focusable="false">
+                  <use href="#icon-info"></use>
+                </svg>
+              </span>
+            </div>
+            <div id="room-details-content" class="feature-grid"></div>
+          </article>
+
+          <article class="info-card timeline-card" aria-labelledby="availability-title">
+            <div class="card-heading">
+              <div>
+                <h2 id="availability-title">AVAILABILITY</h2>
+                <p>可用状态</p>
+              </div>
+              <span class="card-icon blue" aria-hidden="true">
+                <svg class="ui-icon" focusable="false">
+                  <use href="#icon-calendar-days"></use>
+                </svg>
+              </span>
+            </div>
+            <div class="timeline-wrap">
+              <div id="availability-timeline" class="availability-timeline"></div>
+              <div id="time-pointer" class="time-pointer" aria-hidden="true">
+                <span id="pointer-label">--:--</span>
+              </div>
+            </div>
+            <div class="timeline-axis">
+              <span>08:00</span>
+              <span>12:00</span>
+              <span>17:00</span>
+            </div>
+            <div class="legend">
+              <span><i class="legend-box available"></i>Available / 可用</span>
+              <span><i class="legend-box booked"></i>Booked / 已预订</span>
+              <span><i class="legend-box lunch"></i>Lunch / 午休</span>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="booking-modal" class="modal">
+      <form id="booking-form" method="dialog" class="modal-panel">
+        <input id="booking-id" type="hidden" />
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Booking / 预定</p>
+            <h2 id="booking-modal-title">Book Room / 预订会议室</h2>
+          </div>
+          <button class="icon-close" type="button" data-close-booking aria-label="Close">×</button>
+        </div>
+
+        <div id="booking-errors" class="form-errors" aria-live="polite"></div>
+
+        <label class="field">
+          <span>Meeting Name / 会议名称</span>
+          <input id="meeting-title" name="title" type="text" maxlength="80" autocomplete="off" required />
+        </label>
+
+        <label class="field">
+          <span>Booker / 预订人</span>
+          <input id="meeting-booker" name="booker" type="text" maxlength="60" autocomplete="off" required />
+        </label>
+
+        <fieldset class="meeting-time-field">
+          <legend>Meeting Time / 会议时间</legend>
+          <div class="time-grid">
+            <label>
+              <span>Date / 日期</span>
+              <input id="meeting-date" name="date" type="date" required />
+            </label>
+            <label>
+              <span>Start / 开始</span>
+              <select id="meeting-start" name="startTime" required></select>
+            </label>
+            <label>
+              <span>End / 结束</span>
+              <select id="meeting-end" name="endTime" required></select>
+            </label>
+          </div>
+          <p class="field-note">08:00 - 17:00, 30-minute slots. Lunch 12:00 - 13:00 is unavailable.</p>
+        </fieldset>
+
+        <label class="field">
+          <span>Remark / 备注</span>
+          <textarea id="meeting-remark" name="remark" rows="3" maxlength="160"></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button class="btn btn-secondary" type="button" data-close-booking>Cancel / 取消</button>
+          <button class="btn btn-primary" type="submit">Save / 保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="detail-modal" class="modal">
+      <section class="modal-panel detail-panel">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Booking Detail / 会议详情</p>
+            <h2 id="detail-title">Meeting</h2>
+          </div>
+          <button class="icon-close" type="button" data-close-detail aria-label="Close">×</button>
+        </div>
+        <dl class="detail-list">
+          <div>
+            <dt>Time / 时间</dt>
+            <dd id="detail-time">--</dd>
+          </div>
+          <div>
+            <dt>Booker / 预订人</dt>
+            <dd id="detail-booker">--</dd>
+          </div>
+          <div>
+            <dt>Status / 状态</dt>
+            <dd id="detail-status">--</dd>
+          </div>
+          <div>
+            <dt>Remark / 备注</dt>
+            <dd id="detail-remark">--</dd>
+          </div>
+        </dl>
+        <div class="modal-actions split-actions">
+          <button id="delete-booking-btn" class="btn btn-danger" type="button">Delete / 删除</button>
+          <div>
+            <button id="edit-booking-btn" class="btn btn-secondary" type="button">Edit / 编辑</button>
+            <button class="btn btn-primary" type="button" data-close-detail>Close / 关闭</button>
+          </div>
+        </div>
+      </section>
+    </dialog>
+
+    <dialog id="data-modal" class="modal">
+      <section class="modal-panel data-panel">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Local Data / 本地数据</p>
+            <h2>Data Management / 数据管理</h2>
+          </div>
+          <button class="icon-close" type="button" data-close-data aria-label="Close">×</button>
+        </div>
+        <p class="data-note">
+          Export, import, or reset the localStorage data used by this screen.
+        </p>
+        <div class="data-actions">
+          <button id="export-data-btn" class="btn btn-secondary" type="button">Export Data / 导出数据</button>
+          <label class="btn btn-secondary file-btn">
+            Import Data / 导入数据
+            <input id="import-data-input" type="file" accept="application/json,.json" />
+          </label>
+          <button id="reset-data-btn" class="btn btn-danger" type="button">Reset Data / 重置数据</button>
+        </div>
+      </section>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
