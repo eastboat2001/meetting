@@ -131,6 +131,8 @@
     roomConfig: { ...defaultRoomConfig },
     holidays: defaultHolidayData.slice(),
     detailBookingId: null,
+    previewDate: new Date(),
+    previewView: "week",
     toastTimer: null,
   };
 
@@ -343,6 +345,13 @@
     return new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], 0, 0);
   }
 
+  function parseDateOnly(value) {
+    if (value instanceof Date) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    return createLocalDateTime(formatInputDate(new Date(`${value}T00:00:00`)), "00:00");
+  }
+
   function toLocalIso(date) {
     return `${formatInputDate(date)}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:00`;
   }
@@ -373,6 +382,43 @@
   function getBookingsForDate(bookings, date = new Date()) {
     const dateKey = typeof date === "string" ? date : formatInputDate(date);
     return sortBookings(bookings).filter((booking) => formatInputDate(new Date(booking.start)) === dateKey);
+  }
+
+  function getBookingsByDate(bookings, date = new Date()) {
+    return getBookingsForDate(bookings, date);
+  }
+
+  function getBookingsByDateRange(bookings, startDate, endDate) {
+    const start = parseDateOnly(startDate);
+    const end = addDays(parseDateOnly(endDate), 1);
+    return sortBookings(bookings).filter((booking) => {
+      const bookingStart = new Date(booking.start);
+      return bookingStart >= start && bookingStart < end;
+    });
+  }
+
+  function isSameDate(dateA, dateB) {
+    return formatInputDate(parseDateOnly(dateA)) === formatInputDate(parseDateOnly(dateB));
+  }
+
+  function isPastTime(dateTime, now = new Date()) {
+    const value = dateTime instanceof Date ? dateTime : new Date(dateTime);
+    return !Number.isNaN(value.getTime()) && value < now;
+  }
+
+  function getWeekRange(date = new Date()) {
+    const target = parseDateOnly(date);
+    const day = target.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const start = addDays(target, mondayOffset);
+    const days = Array.from({ length: 5 }, (_, index) => addDays(start, index));
+    return {
+      start,
+      end: days[days.length - 1],
+      startDate: formatInputDate(start),
+      endDate: formatInputDate(days[days.length - 1]),
+      days,
+    };
   }
 
   function getTodayBookings(bookings, now = new Date()) {
@@ -451,7 +497,13 @@
     });
   }
 
-  function validateBooking(formData, existingBookings = [], config = defaultRoomConfig, editingId = null) {
+  function validateBooking(
+    formData,
+    existingBookings = [],
+    config = defaultRoomConfig,
+    editingId = null,
+    now = new Date()
+  ) {
     const errors = [];
     const title = String(formData.title || "").trim();
     const booker = String(formData.booker || "").trim();
@@ -484,6 +536,9 @@
       }
       if (!isWithinBusinessHours(start, end, config)) {
         errors.push("Meeting must be within 08:00 - 17:00. / 会议必须在 08:00 - 17:00 内。");
+      }
+      if (isPastTime(start, now)) {
+        errors.push("Meeting cannot start in the past. / 会议开始时间不能早于当前时间。");
       }
       if (overlapsLunch(start, end, config)) {
         errors.push("Meeting cannot overlap lunch 12:00 - 13:00. / 会议不能与 12:00 - 13:00 午休重叠。");
@@ -839,6 +894,72 @@
     return segments;
   }
 
+  function getAvailabilitySegments(date, bookings = state.bookings, config = defaultRoomConfig) {
+    return getTimelineSegments(bookings, date, config);
+  }
+
+  function getOverlappingBooking(date, startMinutes, endMinutes, bookings = state.bookings, editingId = null) {
+    const dateBookings = getBookingsByDate(bookings, date);
+    return dateBookings.find((booking) => {
+      if (editingId && booking.id === editingId) {
+        return false;
+      }
+      return overlaps(
+        startMinutes,
+        endMinutes,
+        minutesSinceMidnight(new Date(booking.start)),
+        minutesSinceMidnight(new Date(booking.end))
+      );
+    });
+  }
+
+  function formatPreviewRange(range) {
+    const start = range.start;
+    const end = range.end;
+    const sameMonth = start.getMonth() === end.getMonth();
+    const startLabel = start.toLocaleString("en-US", { month: "short", day: "numeric" });
+    const endLabel = sameMonth
+      ? `${end.getDate()}`
+      : end.toLocaleString("en-US", { month: "short", day: "numeric" });
+    return `${startLabel} - ${endLabel}`;
+  }
+
+  function formatPreviewDay(date) {
+    const dateLines = formatDateLines(date);
+    return {
+      en: `${WEEKDAYS_EN[date.getDay()]} ${date.toLocaleString("en-US", { month: "short" })} ${date.getDate()}`,
+      cn: dateLines.cn,
+    };
+  }
+
+  function getTimelinePercent(minutes, config = defaultRoomConfig) {
+    const businessStart = parseTimeToMinutes(config.businessStart);
+    const businessEnd = parseTimeToMinutes(config.businessEnd);
+    return ((minutes - businessStart) / (businessEnd - businessStart)) * 100;
+  }
+
+  function getMergedWeekBookingBlocks(bookings, config = defaultRoomConfig) {
+    const businessStart = parseTimeToMinutes(config.businessStart);
+    const businessEnd = parseTimeToMinutes(config.businessEnd);
+    return sortBookings(bookings)
+      .map((booking) => ({
+        start: Math.max(businessStart, minutesSinceMidnight(new Date(booking.start))),
+        end: Math.min(businessEnd, minutesSinceMidnight(new Date(booking.end))),
+        bookings: [booking],
+      }))
+      .filter((block) => block.start < block.end)
+      .reduce((blocks, block) => {
+        const previous = blocks[blocks.length - 1];
+        if (previous && block.start <= previous.end) {
+          previous.end = Math.max(previous.end, block.end);
+          previous.bookings.push(...block.bookings);
+          return blocks;
+        }
+        blocks.push(block);
+        return blocks;
+      }, []);
+  }
+
   function renderHolidayList() {
     const holidays = getFutureHolidays(state.holidays, new Date()).slice(0, 5);
     if (!holidays.length) {
@@ -883,6 +1004,148 @@
     box.innerHTML = errors.map((error) => `<div>${escapeHtml(error)}</div>`).join("");
   }
 
+  function getBookingTimeFeedback(
+    formData,
+    existingBookings = state.bookings,
+    config = state.roomConfig,
+    editingId = null,
+    now = new Date()
+  ) {
+    const messages = [];
+    const date = String(formData.date || "").trim();
+    const startTime = String(formData.startTime || "").trim();
+    const endTime = String(formData.endTime || "").trim();
+    if (!date || !startTime || !endTime) {
+      return messages;
+    }
+
+    const start = createLocalDateTime(date, startTime);
+    const end = createLocalDateTime(date, endTime);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      messages.push({
+        tone: "error",
+        title: "Invalid time / 时间无效",
+        detail: "Please select a valid meeting date and time. / 请选择有效的会议日期和时间。",
+      });
+      return messages;
+    }
+
+    if (end <= start) {
+      messages.push({
+        tone: "error",
+        title: "End time is too early / 结束时间无效",
+        detail: "End time must be later than start time. / 结束时间必须晚于开始时间。",
+      });
+    }
+    if (isPastTime(start, now)) {
+      messages.push({
+        tone: "error",
+        title: "Past time is not bookable / 过去时间不可预订",
+        detail: "Please choose today after the current time, or a future date. / 请选择今天当前时间之后或未来日期。",
+      });
+    }
+    if (!isWithinBusinessHours(start, end, config)) {
+      messages.push({
+        tone: "error",
+        title: "Outside working hours / 超出工作时间",
+        detail: `Meeting time must be within ${config.businessStart} - ${config.businessEnd}. / 会议时间需要在 ${config.businessStart} - ${config.businessEnd} 之间。`,
+      });
+    }
+    if (overlapsLunch(start, end, config)) {
+      messages.push({
+        tone: "warning",
+        title: "Lunch break is not bookable / 午休时间不可预订",
+        detail: `Lunch break is ${config.lunchStart} - ${config.lunchEnd}. / 午休时间为 ${config.lunchStart} - ${config.lunchEnd}。`,
+      });
+    }
+
+    const conflict = getOverlappingBooking(
+      date,
+      minutesSinceMidnight(start),
+      minutesSinceMidnight(end),
+      existingBookings,
+      editingId
+    );
+    if (conflict) {
+      messages.push({
+        tone: "error",
+        title: "Selected time conflicts with an existing meeting / 所选时间与现有会议冲突",
+        detail: `This slot already has: ${formatTimeOnly(conflict.start)} - ${formatTimeOnly(conflict.end)} ${conflict.title} (${conflict.booker}).`,
+      });
+    }
+    return messages;
+  }
+
+  function renderTimeFeedback(messages) {
+    const feedback = document.getElementById("booking-time-feedback");
+    if (!feedback) {
+      return;
+    }
+    const first = messages[0];
+    feedback.className = "booking-time-feedback";
+    if (!first) {
+      feedback.innerHTML = "";
+      return;
+    }
+    feedback.classList.add("visible", first.tone === "warning" ? "warning" : "error");
+    feedback.innerHTML = `
+      <strong>${escapeHtml(first.title)}</strong>
+      <span>${escapeHtml(first.detail)}</span>
+    `;
+  }
+
+  function renderSelectedDateAvailability(dateValue) {
+    const date = dateValue || document.getElementById("meeting-date")?.value;
+    const timeline = document.getElementById("booking-availability-timeline");
+    const selectedWindow = document.getElementById("booking-selected-window");
+    const pointer = document.getElementById("booking-current-pointer");
+    if (!date || !timeline || !selectedWindow || !pointer) {
+      return;
+    }
+
+    const config = state.roomConfig;
+    const totalMinutes = parseTimeToMinutes(config.businessEnd) - parseTimeToMinutes(config.businessStart);
+    const segments = getAvailabilitySegments(date, state.bookings, config);
+    timeline.innerHTML = segments
+      .map((segment) => {
+        const width = ((segment.end - segment.start) / totalMinutes) * 100;
+        return `<span class="timeline-segment ${segment.type}" style="width:${width}%"></span>`;
+      })
+      .join("");
+
+    const parsedDate = parseDateOnly(date);
+    const label = `${parsedDate.getFullYear()}年${parsedDate.getMonth() + 1}月${parsedDate.getDate()}日`;
+    setText("booking-availability-date", label);
+
+    const formData = getFormData();
+    const startMinutes = parseTimeToMinutes(formData.startTime);
+    const endMinutes = parseTimeToMinutes(formData.endTime);
+    if (endMinutes > startMinutes) {
+      selectedWindow.classList.remove("hidden");
+      selectedWindow.style.left = `${getTimelinePercent(startMinutes, config)}%`;
+      selectedWindow.style.width = `${((endMinutes - startMinutes) / totalMinutes) * 100}%`;
+    } else {
+      selectedWindow.classList.add("hidden");
+    }
+
+    const now = new Date();
+    const nowMinutes = minutesSinceMidnight(now);
+    if (
+      isSameDate(date, now) &&
+      nowMinutes >= parseTimeToMinutes(config.businessStart) &&
+      nowMinutes <= parseTimeToMinutes(config.businessEnd)
+    ) {
+      pointer.classList.remove("hidden");
+      pointer.style.left = `${getTimelinePercent(nowMinutes, config)}%`;
+      setText("booking-current-label", formatTimeOnly(now));
+    } else {
+      pointer.classList.add("hidden");
+    }
+
+    const editingId = document.getElementById("booking-id")?.value || null;
+    renderTimeFeedback(getBookingTimeFeedback(formData, state.bookings, config, editingId));
+  }
+
   function populateTimeOptions(selectedStart, selectedEnd) {
     const config = state.roomConfig;
     const slot = Number(config.timeSlotMinutes || 30);
@@ -890,8 +1153,14 @@
     const businessEnd = parseTimeToMinutes(config.businessEnd);
     const lunchStart = parseTimeToMinutes(config.lunchStart);
     const lunchEnd = parseTimeToMinutes(config.lunchEnd);
+    const dateInput = document.getElementById("meeting-date");
     const startSelect = document.getElementById("meeting-start");
     const endSelect = document.getElementById("meeting-end");
+    const now = new Date();
+    const selectedDate = dateInput?.value || formatInputDate(now);
+    if (dateInput) {
+      dateInput.min = formatInputDate(now);
+    }
 
     const startOptions = [];
     for (let minute = businessStart; minute + slot <= businessEnd; minute += slot) {
@@ -910,29 +1179,44 @@
     startSelect.innerHTML = startOptions.map((time) => `<option value="${time}">${time}</option>`).join("");
     endSelect.innerHTML = endOptions.map((time) => `<option value="${time}">${time}</option>`).join("");
 
-    if (selectedStart && startOptions.includes(selectedStart)) {
+    Array.from(startSelect.options).forEach((option) => {
+      option.disabled = isPastTime(createLocalDateTime(selectedDate, option.value), now);
+    });
+
+    const firstEnabledStart = Array.from(startSelect.options).find((option) => !option.disabled)?.value || "";
+    if (
+      selectedStart &&
+      startOptions.includes(selectedStart) &&
+      !Array.from(startSelect.options).find((option) => option.value === selectedStart)?.disabled
+    ) {
       startSelect.value = selectedStart;
+    } else if (firstEnabledStart) {
+      startSelect.value = firstEnabledStart;
     }
     if (selectedEnd && endOptions.includes(selectedEnd)) {
       endSelect.value = selectedEnd;
     }
     syncEndOptions();
+    renderSelectedDateAvailability(selectedDate);
   }
 
   function syncEndOptions() {
     const config = state.roomConfig;
+    const dateInput = document.getElementById("meeting-date");
     const startSelect = document.getElementById("meeting-start");
     const endSelect = document.getElementById("meeting-end");
     const startMinutes = parseTimeToMinutes(startSelect.value);
     const slot = Number(config.timeSlotMinutes || 30);
     const lunchStart = parseTimeToMinutes(config.lunchStart);
     const lunchEnd = parseTimeToMinutes(config.lunchEnd);
+    const selectedDate = dateInput?.value || formatInputDate(new Date());
     let firstEnabled = "";
 
     Array.from(endSelect.options).forEach((option) => {
       const optionMinutes = parseTimeToMinutes(option.value);
       const wouldOverlapLunch = startMinutes < lunchEnd && optionMinutes > lunchStart;
-      const disabled = optionMinutes <= startMinutes || wouldOverlapLunch;
+      const endWouldBePast = isPastTime(createLocalDateTime(selectedDate, option.value), new Date());
+      const disabled = optionMinutes <= startMinutes || wouldOverlapLunch || endWouldBePast;
       option.disabled = disabled;
       if (!disabled && !firstEnabled) {
         firstEnabled = option.value;
@@ -946,9 +1230,248 @@
     ) {
       endSelect.value = firstEnabled || minutesToTime(startMinutes + slot);
     }
+    renderSelectedDateAvailability(selectedDate);
   }
 
-  function openBookingModal(mode = "create", booking = null) {
+  function renderSchedulePreviewModal() {
+    state.bookings = loadBookings();
+    const range = getWeekRange(state.previewDate);
+    setText("preview-week-range-text", `${formatPreviewRange(range)} / ${range.startDate} - ${range.endDate}`);
+
+    const isWeek = state.previewView === "week";
+    document.getElementById("week-view-panel")?.classList.toggle("active", isWeek);
+    document.getElementById("agenda-view-panel")?.classList.toggle("active", !isWeek);
+    document.getElementById("week-view-btn")?.classList.toggle("active", isWeek);
+    document.getElementById("agenda-view-btn")?.classList.toggle("active", !isWeek);
+    document.getElementById("week-view-btn")?.setAttribute("aria-selected", String(isWeek));
+    document.getElementById("agenda-view-btn")?.setAttribute("aria-selected", String(!isWeek));
+
+    renderWeekView(range);
+    renderAgendaView(range);
+  }
+
+  function renderWeekView(range = getWeekRange(state.previewDate)) {
+    const grid = document.getElementById("week-grid");
+    if (!grid) {
+      return;
+    }
+
+    const config = state.roomConfig;
+    const businessStart = parseTimeToMinutes(config.businessStart);
+    const businessEnd = parseTimeToMinutes(config.businessEnd);
+    const totalMinutes = businessEnd - businessStart;
+    const hours = [];
+    for (let minute = businessStart; minute <= businessEnd; minute += 60) {
+      hours.push(minute);
+    }
+
+    const timeColumn = `
+      <aside class="week-time-column" aria-hidden="true">
+        <div class="week-time-spacer"></div>
+        <div class="week-time-labels">
+          ${hours
+            .map((minute) => {
+              const timeLabelClass = minute === businessEnd ? "week-time-label end" : "week-time-label";
+              return `<span class="${timeLabelClass}" style="top:${((minute - businessStart) / totalMinutes) * 100}%">${minutesToTime(minute)}</span>`;
+            })
+            .join("")}
+        </div>
+      </aside>
+    `;
+
+    const lunchTop = getTimelinePercent(parseTimeToMinutes(config.lunchStart), config);
+    const lunchHeight =
+      ((parseTimeToMinutes(config.lunchEnd) - parseTimeToMinutes(config.lunchStart)) / totalMinutes) * 100;
+
+    const daysHtml = range.days
+      .map((date, index) => {
+        const dateKey = formatInputDate(date);
+        const dayLabel = formatPreviewDay(date);
+        const dayBookings = getBookingsByDate(state.bookings, dateKey);
+        const bookingBlocks = getMergedWeekBookingBlocks(dayBookings, config)
+          .map((block) => {
+            const firstBooking = block.bookings[0];
+            const label =
+              block.bookings.length > 1
+                ? `${minutesToTime(block.start)} - ${minutesToTime(block.end)} ${block.bookings.length} meetings occupied / 已占用`
+                : `${formatTimeOnly(firstBooking.start)} - ${formatTimeOnly(firstBooking.end)} ${firstBooking.title} ${firstBooking.booker}`;
+            return `
+              <button
+                class="week-booking"
+                type="button"
+                data-booking-id="${escapeHtml(firstBooking.id)}"
+                data-booking-ids="${escapeHtml(block.bookings.map((booking) => booking.id).join(","))}"
+                aria-label="${escapeHtml(label)}"
+                style="top:${getTimelinePercent(block.start, config)}%;height:${((block.end - block.start) / totalMinutes) * 100}%"
+              ></button>
+            `;
+          })
+          .join("");
+
+        return `
+          <section class="week-day ${isSameDate(date, new Date()) ? "today" : ""}">
+            <header class="week-day-header">
+              <strong>${escapeHtml(dayLabel.en)}</strong>
+              <span>${escapeHtml(dayLabel.cn)}</span>
+            </header>
+            <div class="week-day-lane" data-date="${dateKey}">
+              <span class="week-lunch" style="top:${lunchTop}%;height:${lunchHeight}%">
+                ${index === 2 ? '<span class="week-lunch-label">Lunch Break / 午休时间</span>' : ""}
+              </span>
+              ${bookingBlocks}
+            </div>
+          </section>
+        `;
+      })
+      .join("");
+
+    grid.innerHTML = `${timeColumn}${daysHtml}`;
+    grid.querySelectorAll(".week-booking").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const ids = String(button.dataset.bookingIds || "")
+          .split(",")
+          .filter(Boolean);
+        if (ids.length > 1) {
+          openBookingGroupDetailModal(ids);
+          return;
+        }
+        openBookingDetailModal(button.dataset.bookingId);
+      });
+    });
+    grid.querySelectorAll(".week-day-lane").forEach((lane) => {
+      lane.addEventListener("click", (event) => handleWeekLaneClick(event, lane));
+    });
+  }
+
+  function handleWeekLaneClick(event, lane) {
+    const config = state.roomConfig;
+    const slot = Number(config.timeSlotMinutes || 30);
+    const businessStart = parseTimeToMinutes(config.businessStart);
+    const businessEnd = parseTimeToMinutes(config.businessEnd);
+    const totalMinutes = businessEnd - businessStart;
+    const rect = lane.getBoundingClientRect();
+    const rawMinutes = businessStart + ((event.clientY - rect.top) / rect.height) * totalMinutes;
+    const startMinutes = Math.floor(rawMinutes / slot) * slot;
+    const endMinutes = Math.min(startMinutes + slot, businessEnd);
+    const date = lane.dataset.date;
+    if (!date || startMinutes < businessStart || endMinutes <= startMinutes) {
+      return;
+    }
+
+    const segment = getAvailabilitySegments(date, state.bookings, config).find(
+      (item) => startMinutes >= item.start && startMinutes < item.end
+    );
+    if (segment?.type === "lunch") {
+      showToast("Lunch break is not bookable. / 午休时间不可预订。", "error");
+      return;
+    }
+    if (segment?.type === "booked") {
+      const conflict = getOverlappingBooking(date, startMinutes, endMinutes, state.bookings);
+      if (conflict) {
+        openBookingDetailModal(conflict.id);
+      }
+      return;
+    }
+
+    openBookingModalWithPreset(date, minutesToTime(startMinutes), minutesToTime(endMinutes));
+  }
+
+  function renderAgendaView(range = getWeekRange(state.previewDate)) {
+    const list = document.getElementById("agenda-list");
+    if (!list) {
+      return;
+    }
+
+    const weekEnd = addDays(range.end, 1);
+    const weekBookings = sortBookings(state.bookings).filter((booking) => {
+      const start = new Date(booking.start);
+      return start >= range.start && start < weekEnd;
+    });
+    if (!weekBookings.length) {
+      list.innerHTML = `<div class="empty-preview">No meetings in this week / 本周暂无会议</div>`;
+      return;
+    }
+
+    const groups = new Map();
+    weekBookings.forEach((booking) => {
+      const key = formatInputDate(new Date(booking.start));
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key).push(booking);
+    });
+
+    list.innerHTML = Array.from(groups.entries())
+      .map(([dateKey, bookings]) => {
+        const date = parseDateOnly(dateKey);
+        const day = formatPreviewDay(date);
+        return `
+          <section class="agenda-day">
+            <h3>
+              <svg class="ui-icon" aria-hidden="true" focusable="false">
+                <use href="#icon-calendar-days"></use>
+              </svg>
+              <span>${escapeHtml(day.en)} / ${escapeHtml(day.cn)}</span>
+            </h3>
+            ${bookings
+              .map((booking) => {
+                const avatar = initials(booking.booker);
+                return `
+                  <button class="agenda-item" type="button" data-booking-id="${escapeHtml(booking.id)}">
+                    <span class="agenda-time">
+                      <svg class="ui-icon" aria-hidden="true" focusable="false">
+                        <use href="#icon-clock-3"></use>
+                      </svg>
+                      <strong>${formatTimeOnly(booking.start)} - ${formatTimeOnly(booking.end)}</strong>
+                    </span>
+                    <span class="agenda-meeting">
+                      <strong>${escapeHtml(booking.title)}</strong>
+                      <span>${escapeHtml(booking.remark || "No remark / 无备注")}</span>
+                    </span>
+                    <span class="agenda-person">
+                      <span class="avatar agenda-avatar" style="background:${avatarColor(booking.booker)}">${escapeHtml(avatar)}</span>
+                      <span class="agenda-person-copy">
+                        <strong>${escapeHtml(booking.booker)}</strong>
+                        <small>Booker / 预订人</small>
+                      </span>
+                    </span>
+                  </button>
+                `;
+              })
+              .join("")}
+          </section>
+        `;
+      })
+      .join("");
+
+    list.querySelectorAll(".agenda-item").forEach((item) => {
+      item.addEventListener("click", () => openBookingDetailModal(item.dataset.bookingId));
+    });
+  }
+
+  function openSchedulePreviewModal() {
+    state.previewDate = new Date();
+    state.previewView = "week";
+    renderSchedulePreviewModal();
+    showDialog(document.getElementById("schedule-preview-modal"));
+  }
+
+  function closeSchedulePreviewModal() {
+    closeDialog(document.getElementById("schedule-preview-modal"));
+  }
+
+  function setPreviewView(view) {
+    state.previewView = view;
+    renderSchedulePreviewModal();
+  }
+
+  function movePreviewWeek(offset) {
+    state.previewDate = addDays(state.previewDate, offset * 7);
+    renderSchedulePreviewModal();
+  }
+
+  function openBookingModal(mode = "create", booking = null, preset = null) {
     const modal = document.getElementById("booking-modal");
     const title = document.getElementById("booking-modal-title");
     const defaults = booking
@@ -957,8 +1480,9 @@
           startTime: formatTimeOnly(booking.start),
           endTime: formatTimeOnly(booking.end),
         }
-      : getDefaultTimeRange(new Date(), state.roomConfig);
+      : preset || getDefaultTimeRange(new Date(), state.roomConfig);
 
+    state.bookings = loadBookings();
     setFormErrors([]);
     title.textContent = mode === "edit" ? "Edit Booking / 编辑预订" : "Book Room / 预订会议室";
     document.getElementById("booking-id").value = booking ? booking.id : "";
@@ -970,6 +1494,10 @@
 
     showDialog(modal);
     document.getElementById("meeting-title").focus();
+  }
+
+  function openBookingModalWithPreset(date, startTime, endTime) {
+    openBookingModal("create", null, { date, startTime, endTime });
   }
 
   function closeBookingModal() {
@@ -987,15 +1515,81 @@
     }
 
     state.detailBookingId = booking.id;
+    renderDetailActions(false);
     setText("detail-title", booking.title);
-    setText(
-      "detail-time",
-      `${formatInputDate(new Date(booking.start))} ${formatTimeOnly(booking.start)} - ${formatTimeOnly(booking.end)}`
+    setHtml(
+      "detail-list",
+      `
+        <div>
+          <dt>Time / 时间</dt>
+          <dd>${escapeHtml(`${formatInputDate(new Date(booking.start))} ${formatTimeOnly(booking.start)} - ${formatTimeOnly(booking.end)}`)}</dd>
+        </div>
+        <div>
+          <dt>Booker / 预订人</dt>
+          <dd>${escapeHtml(booking.booker)}</dd>
+        </div>
+        <div>
+          <dt>Status / 状态</dt>
+          <dd>${escapeHtml(getBookingStatusLabel(booking, new Date()))}</dd>
+        </div>
+        <div>
+          <dt>Remark / 备注</dt>
+          <dd>${escapeHtml(booking.remark || "No remark / 无备注")}</dd>
+        </div>
+      `
     );
-    setText("detail-booker", booking.booker);
-    setText("detail-status", getBookingStatusLabel(booking, new Date()));
-    setText("detail-remark", booking.remark || "No remark / 无备注");
     showDialog(document.getElementById("detail-modal"));
+  }
+
+  function openBookingGroupDetailModal(ids) {
+    const idSet = new Set(ids);
+    const bookings = sortBookings(state.bookings.filter((booking) => idSet.has(booking.id)));
+    if (!bookings.length) {
+      showToast("Booking was not found. / 未找到该预订。", "error");
+      return;
+    }
+
+    state.detailBookingId = null;
+    renderDetailActions(true);
+    const first = bookings[0];
+    const last = bookings[bookings.length - 1];
+    setText(
+      "detail-title",
+      `${formatTimeOnly(first.start)} - ${formatTimeOnly(last.end)} · ${bookings.length} Meetings / ${bookings.length} 场会议`
+    );
+    setHtml(
+      "detail-list",
+      `
+        <div class="detail-group-summary">
+          <dt>Occupied Time / 占用时间</dt>
+          <dd>${escapeHtml(`${formatInputDate(new Date(first.start))} ${formatTimeOnly(first.start)} - ${formatTimeOnly(last.end)}`)}</dd>
+        </div>
+        <div class="detail-group">
+          ${bookings
+            .map(
+              (booking) => `
+                <article class="detail-meeting">
+                  <div>
+                    <strong>${escapeHtml(booking.title)}</strong>
+                    <span>${escapeHtml(formatTimeOnly(booking.start))} - ${escapeHtml(formatTimeOnly(booking.end))}</span>
+                  </div>
+                  <div>
+                    <span>${escapeHtml(booking.booker)}</span>
+                    <small>${escapeHtml(booking.remark || "No remark / 无备注")}</small>
+                  </div>
+                </article>
+              `
+            )
+            .join("")}
+        </div>
+      `
+    );
+    showDialog(document.getElementById("detail-modal"));
+  }
+
+  function renderDetailActions(isGroup) {
+    document.getElementById("edit-booking-btn")?.classList.toggle("hidden", isGroup);
+    document.getElementById("delete-booking-btn")?.classList.toggle("hidden", isGroup);
   }
 
   function closeBookingDetailModal() {
@@ -1034,6 +1628,9 @@
     saveBookings(nextBookings);
     closeBookingModal();
     renderApp();
+    if (document.getElementById("schedule-preview-modal")?.open) {
+      renderSchedulePreviewModal();
+    }
     showToast(editingId ? "Booking updated. / 预订已更新。" : "Booking saved. / 预订已保存。", "success");
   }
 
@@ -1053,6 +1650,9 @@
     saveBookings(state.bookings.filter((item) => item.id !== booking.id));
     closeBookingDetailModal();
     renderApp();
+    if (document.getElementById("schedule-preview-modal")?.open) {
+      renderSchedulePreviewModal();
+    }
     showToast("Booking deleted. / 预订已删除。", "success");
   }
 
@@ -1149,7 +1749,7 @@
   }
 
   function bindEvents() {
-    ["booking-modal", "detail-modal", "data-modal"].forEach((id) => {
+    ["booking-modal", "detail-modal", "data-modal", "schedule-preview-modal"].forEach((id) => {
       const dialog = document.getElementById(id);
       dialog.addEventListener("cancel", (event) => {
         event.preventDefault();
@@ -1162,6 +1762,7 @@
       });
     });
     document.getElementById("book-room-btn").addEventListener("click", () => openBookingModal());
+    document.getElementById("schedule-preview-btn").addEventListener("click", openSchedulePreviewModal);
     document.getElementById("data-menu-btn").addEventListener("click", () => {
       showDialog(document.getElementById("data-modal"));
     });
@@ -1174,14 +1775,28 @@
     document.querySelectorAll("[data-close-data]").forEach((button) => {
       button.addEventListener("click", () => closeDialog(document.getElementById("data-modal")));
     });
+    document.querySelectorAll("[data-close-schedule]").forEach((button) => {
+      button.addEventListener("click", closeSchedulePreviewModal);
+    });
     document.getElementById("booking-form").addEventListener("submit", handleSaveBooking);
     document.getElementById("meeting-start").addEventListener("change", syncEndOptions);
+    document.getElementById("meeting-end").addEventListener("change", () => {
+      renderSelectedDateAvailability(document.getElementById("meeting-date").value);
+    });
     document.getElementById("meeting-date").addEventListener("change", () => {
       populateTimeOptions(
         document.getElementById("meeting-start").value,
         document.getElementById("meeting-end").value
       );
     });
+    document.getElementById("preview-prev-week").addEventListener("click", () => movePreviewWeek(-1));
+    document.getElementById("preview-this-week").addEventListener("click", () => {
+      state.previewDate = new Date();
+      renderSchedulePreviewModal();
+    });
+    document.getElementById("preview-next-week").addEventListener("click", () => movePreviewWeek(1));
+    document.getElementById("week-view-btn").addEventListener("click", () => setPreviewView("week"));
+    document.getElementById("agenda-view-btn").addEventListener("click", () => setPreviewView("agenda"));
     document.getElementById("edit-booking-btn").addEventListener("click", () => {
       const booking = state.bookings.find((item) => item.id === state.detailBookingId);
       if (booking) {
@@ -1232,16 +1847,31 @@
     saveHolidayCache,
     shouldRefreshHolidays,
     refreshHolidaysIfNeeded,
+    getBookingsByDate,
+    getBookingsByDateRange,
+    getWeekRange,
+    isSameDate,
+    isPastTime,
     getTodayBookings,
     getCurrentBooking,
     getNextBooking,
     getBookingStatus,
     validateBooking,
     hasTimeConflict,
+    getBookingTimeFeedback,
     overlapsLunch,
     isWithinBusinessHours,
     sortBookings,
     getTimelineSegments,
+    getAvailabilitySegments,
+    getMergedWeekBookingBlocks,
+    renderSchedulePreviewModal,
+    renderWeekView,
+    renderAgendaView,
+    renderSelectedDateAvailability,
+    openBookingModalWithPreset,
+    openSchedulePreviewModal,
+    setPreviewView,
     parseTimeToMinutes,
     minutesToTime,
     formatInputDate,
