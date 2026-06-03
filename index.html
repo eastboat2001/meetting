@@ -392,15 +392,15 @@
                 <small>本周</small>
               </span>
             </button>
-            <button id="preview-next-week" class="btn btn-secondary preview-nav-btn" type="button">
+            <button id="preview-next-week" class="btn btn-secondary preview-nav-btn next" type="button">
+              <span class="preview-nav-copy">
+                <strong>Next</strong>
+                <small>下一周</small>
+              </span>
               <span class="preview-nav-icon" aria-hidden="true">
                 <svg class="ui-icon" focusable="false">
                   <use href="#icon-chevron-right"></use>
                 </svg>
-              </span>
-              <span class="preview-nav-copy">
-                <strong>Next</strong>
-                <small>下一周</small>
               </span>
             </button>
           </div>
@@ -481,14 +481,10 @@
           <button class="icon-close" type="button" data-close-data aria-label="Close">×</button>
         </div>
         <p class="data-note">
-          Export, import, or reset the localStorage data used by this screen.
+          Export meeting records as Excel, or reset the localStorage data used by this screen.
         </p>
         <div class="data-actions">
-          <button id="export-data-btn" class="btn btn-secondary" type="button">Export Data / 导出数据</button>
-          <label class="btn btn-secondary file-btn">
-            Import Data / 导入数据
-            <input id="import-data-input" type="file" accept="application/json,.json" />
-          </label>
+          <button id="export-data-btn" class="btn btn-secondary" type="button">Export Meeting Records / 导出会议记录</button>
           <button id="reset-data-btn" class="btn btn-danger" type="button">Reset Data / 重置数据</button>
         </div>
       </section>

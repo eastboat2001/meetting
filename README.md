@@ -21,7 +21,7 @@
 - 可用时间条：绿色可用、红色已预订、灰色午休、黑色当前时间指针
 - 中国和马来西亚未来节假日展示
 - 节假日 30 天刷新机制，失败时回退到缓存或内置默认数据
-- 本地数据导出、导入、重置
+- 会议记录 Excel 导出、本地数据重置
 - 弹窗、按钮、列表、提示消息包含柔和动效，并支持 `prefers-reduced-motion`
 
 ## localStorage keys
@@ -31,20 +31,9 @@
 - `aihero_holiday_cache`
 - `aihero_holiday_last_updated`
 
-## 数据导入格式
+## 数据导出
 
-导入 JSON 需要包含：
-
-```json
-{
-  "version": "1.0.0",
-  "exportedAt": "2026-06-01T00:00:00.000Z",
-  "bookings": [],
-  "roomConfig": {},
-  "holidayCache": [],
-  "holidayLastUpdated": "2026-06-01T00:00:00.000Z"
-}
-```
+设置弹窗中的导出功能只导出会议记录，文件格式为 `.xlsx`，不包含会议室配置、节假日缓存或其他本地状态数据。
 
 ## 本地逻辑测试
 

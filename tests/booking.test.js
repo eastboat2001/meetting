@@ -229,4 +229,135 @@ const lunchFeedback = booking.getBookingTimeFeedback(
 );
 assert.match(lunchFeedback.map((item) => item.title).join("\n"), /Lunch|午休/);
 
+const holidayRequests = booking.getHolidayProviderRequests(
+  booking.defaultRoomConfig,
+  new Date("2026-06-02T08:00:00")
+);
+assert.deepStrictEqual(
+  holidayRequests.map((request) => request.url),
+  [
+    "https://malaysia-holiday.dydxsoft.my/api/v1/holidays?year=2026",
+    "https://malaysia-holiday.dydxsoft.my/api/v1/holidays?year=2027",
+    "https://date.nager.at/api/v3/PublicHolidays/2026/CN",
+    "https://date.nager.at/api/v3/PublicHolidays/2027/CN",
+  ],
+  "default holiday requests should fetch current and next year for Malaysia and China"
+);
+
+const normalizedNagerHolidays = booking.normalizeHolidayPayload(
+  [
+    {
+      name: "Hari Malaysia",
+      date: "2026-09-16",
+      state_codes: ["KUL", "SGR"],
+    },
+    {
+      name: "Hari Wilayah Persekutuan",
+      date: "2026-02-01",
+      state_codes: ["LBN"],
+    },
+  ],
+  holidayRequests[0]
+).concat(booking.normalizeHolidayPayload(
+  [
+    {
+      date: "2026-10-01",
+      localName: "National Day",
+      name: "National Day",
+      countryCode: "CN",
+      global: true,
+      types: ["Public"],
+    },
+    {
+      date: "2026-10-02",
+      localName: "National Day",
+      name: "National Day",
+      countryCode: "CN",
+      global: true,
+      types: ["Public"],
+    },
+    {
+      date: "2026-01-01",
+      localName: "Regional Test",
+      name: "Regional Test",
+      countryCode: "MY",
+      global: false,
+      types: ["Public"],
+    },
+  ],
+  holidayRequests[2]
+));
+assert.deepStrictEqual(
+  booking.mergeConsecutiveHolidays(normalizedNagerHolidays).map((holiday) => ({
+    country: holiday.country,
+    countryCn: holiday.countryCn,
+    name: holiday.name,
+    nameCn: holiday.nameCn,
+    startDate: holiday.startDate,
+    endDate: holiday.endDate,
+    source: holiday.source,
+  })),
+  [
+    {
+      country: "Malaysia",
+      countryCn: "马来西亚",
+      name: "Malaysia Day",
+      nameCn: "马来西亚日",
+      startDate: "2026-09-16",
+      endDate: "2026-09-16",
+      source: "malaysia-holiday",
+    },
+    {
+      country: "China",
+      countryCn: "中国",
+      name: "National Day",
+      nameCn: "中国国庆节",
+      startDate: "2026-10-01",
+      endDate: "2026-10-02",
+      source: "nager-date",
+    },
+  ],
+  "holiday provider payloads should normalize, translate, filter regional items, and merge consecutive dates"
+);
+
+const exportedWorkbook = booking.createMeetingRecordsWorkbook(
+  [
+    {
+      id: "booking_export_1",
+      title: "Planning & Review / 规划评审",
+      booker: "Ada <Lead>",
+      start: iso("2026-06-02", "09:30"),
+      end: iso("2026-06-02", "10:30"),
+      remark: "Discuss scope & risks",
+      createdAt: iso("2026-06-01", "18:00"),
+      updatedAt: iso("2026-06-01", "18:30"),
+    },
+  ],
+  new Date(iso("2026-06-02", "08:00"))
+);
+const workbookText = Buffer.from(exportedWorkbook.bytes).toString("utf8");
+assert.strictEqual(
+  exportedWorkbook.fileName,
+  "aihero-meeting-records-2026-06-02.xlsx",
+  "meeting record export should use an xlsx filename"
+);
+assert.strictEqual(
+  exportedWorkbook.mimeType,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "meeting record export should use the official xlsx MIME type"
+);
+assert.ok(workbookText.startsWith("PK"), "meeting record export should be an xlsx zip package");
+assert.ok(workbookText.includes("xl/worksheets/sheet1.xml"), "xlsx package should include a worksheet");
+assert.ok(workbookText.includes("Meeting Name / 会议名称"), "worksheet should include meeting-record headers");
+assert.ok(workbookText.includes("Duration / 时长"), "worksheet should include meeting duration");
+assert.ok(workbookText.includes("1h"), "worksheet should include the calculated meeting duration");
+assert.ok(workbookText.includes("Planning &amp; Review / 规划评审"), "worksheet should XML-escape meeting names");
+assert.ok(workbookText.includes("Ada &lt;Lead&gt;"), "worksheet should XML-escape booker names");
+assert.ok(workbookText.includes("Discuss scope &amp; risks"), "worksheet should include meeting remarks");
+assert.ok(!workbookText.includes("Created At / 创建时间"), "xlsx export should not include internal creation metadata");
+assert.ok(!workbookText.includes("Updated At / 更新时间"), "xlsx export should not include internal update metadata");
+assert.ok(!workbookText.includes("roomConfig"), "xlsx export should not include room configuration");
+assert.ok(!workbookText.includes("holidayCache"), "xlsx export should not include holiday cache");
+assert.ok(!workbookText.includes("holidayLastUpdated"), "xlsx export should not include holiday refresh state");
+
 console.log("All booking logic tests passed.");

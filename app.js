@@ -16,6 +16,87 @@
     holidayLastUpdated: "aihero_holiday_last_updated",
   };
 
+  const NAGER_DATE_API_BASE = "https://date.nager.at/api/v3/PublicHolidays";
+  const MALAYSIA_HOLIDAY_API_BASE = "https://malaysia-holiday.dydxsoft.my/api/v1/holidays";
+  const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const meetingRecordExportHeaders = [
+    "Date / 日期",
+    "Start Time / 开始时间",
+    "End Time / 结束时间",
+    "Duration / 时长",
+    "Meeting Name / 会议名称",
+    "Booker / 预订人",
+    "Remark / 备注",
+  ];
+  const defaultHolidayCountries = [
+    { code: "MY", name: "Malaysia", nameCn: "马来西亚", source: "malaysia-holiday", stateCode: "KUL" },
+    { code: "CN", name: "China", nameCn: "中国" },
+  ];
+  const holidayCountryMeta = {
+    MY: { code: "MY", name: "Malaysia", nameCn: "马来西亚", source: "malaysia-holiday", stateCode: "KUL" },
+    CN: { code: "CN", name: "China", nameCn: "中国" },
+  };
+  const malaysiaStateCodeCount = 16;
+  const malaysiaHolidayNameEn = {
+    "Tahun Baharu": "New Year's Day",
+    "Tahun Baharu Cina": "Chinese New Year",
+    "Tahun Baharu Cina (Hari Kedua)": "Chinese New Year",
+    "Hari Raya Aidilfitri": "Hari Raya Aidilfitri",
+    "Hari Raya Aidilfitri (Hari Kedua)": "Hari Raya Aidilfitri",
+    "Hari Raya Haji": "Hari Raya Haji",
+    "Hari Deepavali": "Deepavali",
+    "Hari Krismas": "Christmas Day",
+    "Hari Kebangsaan": "National Day",
+    "Hari Malaysia": "Malaysia Day",
+    "Awal Muharam (Maal Hijrah)": "Awal Muharram",
+    "Hari Keputeraan Nabi Muhammad S.A.W. (Maulidur Rasul)": "Mawlid al-Nabi",
+    "Hari Wesak": "Wesak Day",
+    "Hari Pekerja": "Labour Day",
+    "Hari Keputeraan Seri Paduka Baginda Yang di-Pertuan Agong": "Birthday of SPB Yang di Pertuan Agong",
+  };
+  const holidayNameCn = {
+    "New Year's Day": "元旦",
+    "Chinese New Year": "春节",
+    "Lunar New Year": "春节",
+    "Spring Festival": "春节",
+    "Ching Ming Festival": "清明节",
+    "Qingming Festival": "清明节",
+    "Labour Day": "劳动节",
+    "Labor Day": "劳动节",
+    "Dragon Boat Festival": "端午节",
+    "Mid-Autumn Festival": "中秋节",
+    "National Day": "国庆日",
+    "CN:National Day": "中国国庆节",
+    "MY:National Day": "国庆日",
+    "Malaysia Day": "马来西亚日",
+    "Christmas Day": "圣诞节",
+    Christmas: "圣诞节",
+    "Hari Raya Puasa": "开斋节",
+    "Hari Raya Aidilfitri": "开斋节",
+    "Hari Raya Haji": "哈芝节",
+    "Hari Raya Aidiladha": "哈芝节",
+    "Tahun Baharu": "元旦",
+    "Tahun Baharu Cina": "春节",
+    "Tahun Baharu Cina (Hari Kedua)": "春节",
+    "Hari Deepavali": "屠妖节",
+    "Hari Krismas": "圣诞节",
+    "Hari Kebangsaan": "国庆日",
+    "Hari Malaysia": "马来西亚日",
+    "Awal Muharam (Maal Hijrah)": "回历元旦",
+    "Hari Keputeraan Nabi Muhammad S.A.W. (Maulidur Rasul)": "先知诞辰",
+    "Hari Wesak": "卫塞节",
+    "Hari Pekerja": "劳动节",
+    "Hari Keputeraan Seri Paduka Baginda Yang di-Pertuan Agong": "国家元首诞辰",
+    "Vesak Day": "卫塞节",
+    "Wesak Day": "卫塞节",
+    Deepavali: "屠妖节",
+    Thaipusam: "大宝森节",
+    "Good Friday": "耶稣受难日",
+    "Awal Muharram": "回历元旦",
+    "Mawlid al-Nabi": "先知诞辰",
+    "Birthday of SPB Yang di Pertuan Agong": "国家元首诞辰",
+  };
+
   const defaultRoomConfig = {
     appName: "AI英雄汇",
     roomName: "AI英雄汇",
@@ -27,6 +108,7 @@
     lunchEnd: "13:00",
     timeSlotMinutes: 30,
     holidayRefreshDays: 30,
+    holidayCountries: defaultHolidayCountries.map((country) => ({ ...country })),
     holidayProviders: [],
   };
 
@@ -230,11 +312,11 @@
   async function refreshHolidaysIfNeeded() {
     const cached = loadHolidayCache();
     const config = loadRoomConfig();
-    if (!shouldRefreshHolidays(new Date(), config)) {
+    if (!shouldRefreshHolidays(new Date(), config) && hasRealHolidaySource(cached)) {
       return cached && cached.length ? cached : defaultHolidayData.slice();
     }
 
-    const fetched = await fetchHolidayProviders(config.holidayProviders || []);
+    const fetched = await fetchHolidayProviders(getHolidayProviderRequests(config, new Date()));
     if (fetched.length) {
       saveHolidayCache(fetched);
       saveHolidayLastUpdated();
@@ -250,34 +332,233 @@
     return defaultHolidayData.slice();
   }
 
+  function getHolidayProviderRequests(config = defaultRoomConfig, now = new Date()) {
+    const years = [now.getFullYear(), now.getFullYear() + 1];
+    const countryRequests = getConfiguredHolidayCountries(config).flatMap((country) =>
+      years.map((year) => getHolidayProviderRequest(country, year))
+    );
+    const customRequests = Array.isArray(config.holidayProviders)
+      ? config.holidayProviders
+          .filter((provider) => typeof provider === "string" && provider.trim())
+          .map((url) => ({ url: url.trim(), source: "custom" }))
+      : [];
+    return countryRequests.concat(customRequests);
+  }
+
+  function getHolidayProviderRequest(country, year) {
+    if (country.source === "malaysia-holiday" || country.code === "MY") {
+      return {
+        url: `${MALAYSIA_HOLIDAY_API_BASE}?year=${year}`,
+        source: "malaysia-holiday",
+        country,
+        year,
+      };
+    }
+    return {
+      url: `${NAGER_DATE_API_BASE}/${year}/${country.code}`,
+      source: "nager-date",
+      country,
+      year,
+    };
+  }
+
+  function hasRealHolidaySource(holidays) {
+    return Boolean(
+      Array.isArray(holidays) &&
+        holidays.some((holiday) => holiday.source === "nager-date" || holiday.source === "malaysia-holiday")
+    );
+  }
+
+  function getConfiguredHolidayCountries(config = defaultRoomConfig) {
+    const countries =
+      Array.isArray(config.holidayCountries) && config.holidayCountries.length
+        ? config.holidayCountries
+        : defaultHolidayCountries;
+    return countries.map(getHolidayCountryMeta).filter((country) => country.code);
+  }
+
+  function getHolidayCountryMeta(country) {
+    const rawCode = typeof country === "string" ? country : country?.code;
+    const code = String(rawCode || "").trim().toUpperCase();
+    if (!code) {
+      return { code: "", name: "", nameCn: "" };
+    }
+    const base = holidayCountryMeta[code] || { code, name: code, nameCn: code };
+    return {
+      ...base,
+      ...(country && typeof country === "object" ? country : {}),
+      code,
+    };
+  }
+
   async function fetchHolidayProviders(providers) {
     if (!Array.isArray(providers) || !providers.length || typeof fetch !== "function") {
       return [];
     }
 
-    const results = await Promise.allSettled(
-      providers
-        .filter((provider) => typeof provider === "string" && provider.trim())
-        .map((url) => fetch(url, { cache: "no-store" }).then((response) => response.json()))
-    );
+    const requests = providers
+      .map((provider) =>
+        typeof provider === "string" ? { url: provider.trim(), source: "custom" } : provider
+      )
+      .filter((provider) => provider && typeof provider.url === "string" && provider.url.trim());
+    const holidays = [];
+    for (const provider of requests) {
+      try {
+        const payload = await fetchHolidayProviderPayload(provider);
+        holidays.push(...normalizeHolidayPayload(payload, provider));
+      } catch (error) {
+        console.warn("Holiday provider failed", provider.url, error);
+      }
+    }
 
-    return results
-      .filter((result) => result.status === "fulfilled")
-      .flatMap((result) => normalizeHolidayPayload(result.value))
-      .filter(isHolidayLike);
+    return mergeConsecutiveHolidays(holidays.filter(isHolidayLike));
   }
 
-  function normalizeHolidayPayload(payload) {
-    if (Array.isArray(payload)) {
-      return payload;
+  async function fetchHolidayProviderPayload(provider, attempts = 2) {
+    let lastError = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await fetch(provider.url, { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Holiday provider failed: ${response.status}`);
+        }
+        return response.json();
+      } catch (error) {
+        lastError = error;
+      }
     }
-    if (payload && Array.isArray(payload.holidays)) {
-      return payload.holidays;
+    throw lastError;
+  }
+
+  function normalizeHolidayPayload(payload, provider = {}) {
+    const holidays = Array.isArray(payload)
+      ? payload
+      : payload && Array.isArray(payload.holidays)
+        ? payload.holidays
+        : payload && Array.isArray(payload.data)
+          ? payload.data
+          : [];
+    if (provider.source === "malaysia-holiday" || holidays.some(isMalaysiaHolidayItem)) {
+      return holidays
+        .map((holiday) => normalizeMalaysiaHoliday(holiday, provider.country))
+        .filter(Boolean);
     }
-    if (payload && Array.isArray(payload.data)) {
-      return payload.data;
+    if (provider.source === "nager-date" || holidays.some(isNagerHolidayItem)) {
+      return holidays.map((holiday) => normalizeNagerHoliday(holiday, provider.country)).filter(Boolean);
     }
-    return [];
+    return holidays;
+  }
+
+  function isMalaysiaHolidayItem(item) {
+    return Boolean(item && typeof item.date === "string" && Array.isArray(item.state_codes));
+  }
+
+  function isNagerHolidayItem(item) {
+    return Boolean(item && typeof item.date === "string" && typeof item.name === "string");
+  }
+
+  function normalizeMalaysiaHoliday(item, providerCountry = null) {
+    if (!item || !item.date || typeof item.name !== "string") {
+      return null;
+    }
+    const country = getHolidayCountryMeta(providerCountry || "MY");
+    if (!isMalaysiaHolidayObserved(item, country)) {
+      return null;
+    }
+    const name = malaysiaHolidayNameEn[item.name] || item.name;
+    return {
+      country: country.name,
+      countryCn: country.nameCn,
+      name,
+      nameCn: getHolidayNameCn({ name, localName: item.name }, country.code),
+      startDate: item.date,
+      endDate: item.date,
+      source: "malaysia-holiday",
+    };
+  }
+
+  function isMalaysiaHolidayObserved(item, country) {
+    if (!Array.isArray(item.state_codes)) {
+      return true;
+    }
+    const stateCode = String(country.stateCode || "").toUpperCase();
+    if (stateCode) {
+      return item.state_codes.includes(stateCode);
+    }
+    return item.state_codes.length >= malaysiaStateCodeCount;
+  }
+
+  function normalizeNagerHoliday(item, providerCountry = null) {
+    if (!item || item.global === false) {
+      return null;
+    }
+    if (Array.isArray(item.types) && !item.types.includes("Public")) {
+      return null;
+    }
+    const countryCode = String(item.countryCode || providerCountry?.code || "").toUpperCase();
+    const country = getHolidayCountryMeta(countryCode);
+    const name = String(item.name || item.localName || "").trim();
+    if (!name || !item.date || !country.code) {
+      return null;
+    }
+    return {
+      country: country.name,
+      countryCn: country.nameCn,
+      name,
+      nameCn: getHolidayNameCn(item, country.code),
+      startDate: item.date,
+      endDate: item.date,
+      source: "nager-date",
+    };
+  }
+
+  function getHolidayNameCn(item, countryCode) {
+    const countryKey = `${countryCode}:${item.name}`;
+    if (holidayNameCn[countryKey]) {
+      return holidayNameCn[countryKey];
+    }
+    if (holidayNameCn[item.name]) {
+      return holidayNameCn[item.name];
+    }
+    if (holidayNameCn[item.localName]) {
+      return holidayNameCn[item.localName];
+    }
+    if (/[\u3400-\u9fff]/.test(item.localName || "")) {
+      return item.localName;
+    }
+    return item.localName || item.name;
+  }
+
+  function mergeConsecutiveHolidays(holidays) {
+    return holidays
+      .filter(isHolidayLike)
+      .map((holiday) => ({ ...holiday, endDate: holiday.endDate || holiday.startDate }))
+      .sort((a, b) => {
+        const byDate = new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+        if (byDate) {
+          return byDate;
+        }
+        return `${a.country}:${a.name}`.localeCompare(`${b.country}:${b.name}`);
+      })
+      .reduce((merged, holiday) => {
+        const previous = merged[merged.length - 1];
+        if (
+          previous &&
+          previous.country === holiday.country &&
+          previous.name === holiday.name &&
+          isNextCalendarDate(previous.endDate, holiday.startDate)
+        ) {
+          previous.endDate = holiday.endDate;
+          return merged;
+        }
+        merged.push(holiday);
+        return merged;
+      }, []);
+  }
+
+  function isNextCalendarDate(endDate, startDate) {
+    const next = addDays(parseDateOnly(endDate), 1);
+    return formatInputDate(next) === formatInputDate(parseDateOnly(startDate));
   }
 
   function isHolidayLike(item) {
@@ -1656,56 +1937,291 @@
     showToast("Booking deleted. / 预订已删除。", "success");
   }
 
-  function exportData() {
-    const payload = {
-      version: "1.0.0",
-      exportedAt: new Date().toISOString(),
-      bookings: loadBookings(),
-      roomConfig: loadRoomConfig(),
-      holidayCache: loadHolidayCache() || defaultHolidayData,
-      holidayLastUpdated: loadHolidayLastUpdated(),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  function exportMeetingRecords() {
+    const workbook = createMeetingRecordsWorkbook(loadBookings(), new Date());
+    const blob = new Blob([workbook.bytes], { type: workbook.mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `aihero-booking-data-${formatInputDate(new Date())}.json`;
+    link.download = workbook.fileName;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    showToast("Data exported. / 数据已导出。", "success");
+    showToast("Meeting records exported. / 会议记录已导出。", "success");
   }
 
-  async function importData(file) {
-    if (!file) {
-      return;
+  function createMeetingRecordsWorkbook(bookings = [], exportedAt = new Date()) {
+    const rows = [meetingRecordExportHeaders].concat(
+      sortBookings(bookings.filter(isBookingLike)).map(getMeetingRecordExportRow)
+    );
+    const worksheetXml = createWorksheetXml(rows);
+    const files = [
+      {
+        path: "[Content_Types].xml",
+        content:
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+          '<Default Extension="xml" ContentType="application/xml"/>' +
+          '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+          '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+          "</Types>",
+      },
+      {
+        path: "_rels/.rels",
+        content:
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+          "</Relationships>",
+      },
+      {
+        path: "xl/workbook.xml",
+        content:
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+          '<sheets><sheet name="Meeting Records" sheetId="1" r:id="rId1"/></sheets>' +
+          "</workbook>",
+      },
+      {
+        path: "xl/_rels/workbook.xml.rels",
+        content:
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+          "</Relationships>",
+      },
+      {
+        path: "xl/worksheets/sheet1.xml",
+        content: worksheetXml,
+      },
+    ];
+    return {
+      fileName: `aihero-meeting-records-${formatInputDate(exportedAt)}.xlsx`,
+      mimeType: XLSX_MIME_TYPE,
+      bytes: createZipArchive(files, exportedAt),
+    };
+  }
+
+  function getMeetingRecordExportRow(booking) {
+    return [
+      formatInputDate(new Date(booking.start)),
+      formatTimeOnly(booking.start),
+      formatTimeOnly(booking.end),
+      formatDurationLabel(booking.start, booking.end),
+      booking.title,
+      booking.booker,
+      booking.remark || "",
+    ];
+  }
+
+  function formatDurationLabel(startValue, endValue) {
+    const start = new Date(startValue);
+    const end = new Date(endValue);
+    const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      return "";
+    }
+    if (minutes % 60 === 0) {
+      return `${minutes / 60}h`;
+    }
+    return `${minutes}min`;
+  }
+
+  function createWorksheetXml(rows) {
+    const lastColumn = columnNumberToName(Math.max(meetingRecordExportHeaders.length, 1));
+    const lastRow = Math.max(rows.length, 1);
+    const sheetData = rows
+      .map((row, rowIndex) => {
+        const rowNumber = rowIndex + 1;
+        const cells = row
+          .map((value, columnIndex) => createWorksheetCell(value, rowNumber, columnIndex + 1))
+          .join("");
+        return `<row r="${rowNumber}">${cells}</row>`;
+      })
+      .join("");
+    return (
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      `<dimension ref="A1:${lastColumn}${lastRow}"/>` +
+      '<sheetViews><sheetView workbookViewId="0"/></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="18"/>' +
+      "<cols>" +
+      '<col min="1" max="1" width="14" customWidth="1"/>' +
+      '<col min="2" max="3" width="13" customWidth="1"/>' +
+      '<col min="4" max="4" width="13" customWidth="1"/>' +
+      '<col min="5" max="5" width="28" customWidth="1"/>' +
+      '<col min="6" max="6" width="18" customWidth="1"/>' +
+      '<col min="7" max="7" width="34" customWidth="1"/>' +
+      "</cols>" +
+      `<sheetData>${sheetData}</sheetData>` +
+      "</worksheet>"
+    );
+  }
+
+  function createWorksheetCell(value, rowNumber, columnNumber) {
+    const cellRef = `${columnNumberToName(columnNumber)}${rowNumber}`;
+    return `<c r="${cellRef}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+  }
+
+  function columnNumberToName(columnNumber) {
+    let value = columnNumber;
+    let name = "";
+    while (value > 0) {
+      value -= 1;
+      name = String.fromCharCode(65 + (value % 26)) + name;
+      value = Math.floor(value / 26);
+    }
+    return name;
+  }
+
+  function escapeXml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+  }
+
+  function createZipArchive(files, modifiedAt = new Date()) {
+    const zipDateTime = getZipDateTime(modifiedAt);
+    let offset = 0;
+    const localParts = [];
+    const centralParts = [];
+
+    for (const file of files) {
+      const nameBytes = encodeUtf8(file.path);
+      const dataBytes = encodeUtf8(file.content);
+      const crc = crc32(dataBytes);
+      const localHeader = createZipLocalHeader(nameBytes, dataBytes.length, crc, zipDateTime);
+      const centralHeader = createZipCentralHeader(
+        nameBytes,
+        dataBytes.length,
+        crc,
+        offset,
+        zipDateTime
+      );
+      localParts.push(localHeader, dataBytes);
+      centralParts.push(centralHeader);
+      offset += localHeader.length + dataBytes.length;
     }
 
-    try {
-      const payload = JSON.parse(await file.text());
-      if (!payload || !Array.isArray(payload.bookings) || typeof payload.roomConfig !== "object") {
-        throw new Error("Missing required fields");
-      }
+    const centralOffset = offset;
+    const centralSize = centralParts.reduce((total, part) => total + part.length, 0);
+    const endRecord = createZipEndRecord(files.length, centralSize, centralOffset);
+    return concatBytes(localParts.concat(centralParts, endRecord));
+  }
 
-      saveBookings(payload.bookings.filter(isBookingLike));
-      saveRoomConfig({ ...defaultRoomConfig, ...payload.roomConfig });
-      if (Array.isArray(payload.holidayCache)) {
-        saveHolidayCache(payload.holidayCache);
-      }
-      if (payload.holidayLastUpdated) {
-        const storage = getStorage();
-        if (storage) {
-          storage.setItem(STORAGE_KEYS.holidayLastUpdated, payload.holidayLastUpdated);
-        }
-      }
+  function createZipLocalHeader(nameBytes, dataLength, crc, zipDateTime) {
+    const header = new Uint8Array(30 + nameBytes.length);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 0x0800, true);
+    view.setUint16(8, 0, true);
+    view.setUint16(10, zipDateTime.time, true);
+    view.setUint16(12, zipDateTime.date, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, dataLength, true);
+    view.setUint32(22, dataLength, true);
+    view.setUint16(26, nameBytes.length, true);
+    view.setUint16(28, 0, true);
+    header.set(nameBytes, 30);
+    return header;
+  }
 
-      closeDialog(document.getElementById("data-modal"));
-      renderApp();
-      showToast("Data imported. / 数据已导入。", "success");
-    } catch (error) {
-      showToast("Import failed. Please check the JSON file. / 导入失败，请检查 JSON 文件。", "error");
+  function createZipCentralHeader(nameBytes, dataLength, crc, localOffset, zipDateTime) {
+    const header = new Uint8Array(46 + nameBytes.length);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 0x02014b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 20, true);
+    view.setUint16(8, 0x0800, true);
+    view.setUint16(10, 0, true);
+    view.setUint16(12, zipDateTime.time, true);
+    view.setUint16(14, zipDateTime.date, true);
+    view.setUint32(16, crc, true);
+    view.setUint32(20, dataLength, true);
+    view.setUint32(24, dataLength, true);
+    view.setUint16(28, nameBytes.length, true);
+    view.setUint16(30, 0, true);
+    view.setUint16(32, 0, true);
+    view.setUint16(34, 0, true);
+    view.setUint16(36, 0, true);
+    view.setUint32(38, 0, true);
+    view.setUint32(42, localOffset, true);
+    header.set(nameBytes, 46);
+    return header;
+  }
+
+  function createZipEndRecord(fileCount, centralSize, centralOffset) {
+    const header = new Uint8Array(22);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 0x06054b50, true);
+    view.setUint16(4, 0, true);
+    view.setUint16(6, 0, true);
+    view.setUint16(8, fileCount, true);
+    view.setUint16(10, fileCount, true);
+    view.setUint32(12, centralSize, true);
+    view.setUint32(16, centralOffset, true);
+    view.setUint16(20, 0, true);
+    return header;
+  }
+
+  function getZipDateTime(date) {
+    const value = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+    const year = Math.max(1980, value.getFullYear());
+    return {
+      time: (value.getHours() << 11) | (value.getMinutes() << 5) | Math.floor(value.getSeconds() / 2),
+      date: ((year - 1980) << 9) | ((value.getMonth() + 1) << 5) | value.getDate(),
+    };
+  }
+
+  function crc32(bytes) {
+    let crc = 0xffffffff;
+    for (let index = 0; index < bytes.length; index += 1) {
+      crc = (crc >>> 8) ^ getCrcTable()[(crc ^ bytes[index]) & 0xff];
     }
+    return (crc ^ 0xffffffff) >>> 0;
+  }
+
+  function getCrcTable() {
+    if (state.crcTable) {
+      return state.crcTable;
+    }
+    state.crcTable = Array.from({ length: 256 }, (_, index) => {
+      let value = index;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+      }
+      return value >>> 0;
+    });
+    return state.crcTable;
+  }
+
+  function encodeUtf8(value) {
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(String(value));
+    }
+    const encoded = unescape(encodeURIComponent(String(value)));
+    const bytes = new Uint8Array(encoded.length);
+    for (let index = 0; index < encoded.length; index += 1) {
+      bytes[index] = encoded.charCodeAt(index);
+    }
+    return bytes;
+  }
+
+  function concatBytes(parts) {
+    const totalLength = parts.reduce((total, part) => total + part.length, 0);
+    const bytes = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const part of parts) {
+      bytes.set(part, offset);
+      offset += part.length;
+    }
+    return bytes;
   }
 
   function resetData() {
@@ -1805,11 +2321,7 @@
       }
     });
     document.getElementById("delete-booking-btn").addEventListener("click", handleDeleteBooking);
-    document.getElementById("export-data-btn").addEventListener("click", exportData);
-    document.getElementById("import-data-input").addEventListener("change", (event) => {
-      importData(event.target.files[0]);
-      event.target.value = "";
-    });
+    document.getElementById("export-data-btn").addEventListener("click", exportMeetingRecords);
     document.getElementById("reset-data-btn").addEventListener("click", resetData);
   }
 
@@ -1845,8 +2357,13 @@
     saveRoomConfig,
     loadHolidayCache,
     saveHolidayCache,
+    createMeetingRecordsWorkbook,
     shouldRefreshHolidays,
     refreshHolidaysIfNeeded,
+    fetchHolidayProviders,
+    getHolidayProviderRequests,
+    normalizeHolidayPayload,
+    mergeConsecutiveHolidays,
     getBookingsByDate,
     getBookingsByDateRange,
     getWeekRange,
