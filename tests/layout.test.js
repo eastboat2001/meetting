@@ -39,6 +39,8 @@ const nextWeekButton = html.match(/<button id="preview-next-week"[\s\S]*?<\/butt
 assert.ok(nextWeekButton.indexOf('class="preview-nav-copy"') < nextWeekButton.indexOf('class="preview-nav-icon"'), "next-week button should place the arrow icon after the text");
 assert.ok(bookingModal.includes("Availability on Selected Date / 所选日期可用状态"), "booking modal should show selected-date availability preview");
 assert.ok(bookingModal.includes('id="booking-availability-timeline"') && bookingModal.includes('id="booking-time-feedback"'), "booking modal should include live availability timeline and feedback");
+assert.ok(bookingModal.includes('Meeting Name / 会议名称 <span class="required-mark" aria-hidden="true">*</span>'), "booking modal should mark meeting name as required");
+assert.ok(bookingModal.includes('Booker / 预订人 <span class="required-mark" aria-hidden="true">*</span>'), "booking modal should mark booker as required");
 assert.ok(!clockBlock.includes("CURRENT TIME / 当前时间"), "left clock block should not show a redundant current-time label");
 assert.match(currentTimeBlock, /font-size:\s*clamp\(3\.15rem,\s*4\.35vw,\s*4\.25rem\);/, "left clock time should use a smaller display size");
 assert.match(dateLineBlock, /font-size:\s*clamp\(0\.78rem,\s*1\.02vw,\s*0\.95rem\);/, "left clock date text should be smaller than before");
@@ -100,6 +102,7 @@ assert.match(css, /\.booking-availability-wrap\s*{[\s\S]*margin-bottom:\s*1\.95r
 assert.match(css, /\.booking-current-pointer span\s*{[\s\S]*top:\s*calc\(100% \+ 0\.28rem\);/, "booking modal current-time label should sit below the timeline to avoid axis-label overlap");
 assert.match(css, /\.booking-current-pointer span\s*{[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.92\);/, "booking modal current-time label should have a readable backing");
 assert.match(css, /\.booking-availability-legend\s*{[\s\S]*margin-top:\s*0;/, "booking modal availability legend should rely on timeline spacing instead of a collapsing top margin");
+assert.match(css, /\.required-mark\s*{[\s\S]*color:\s*var\(--red-600\);/, "required field markers should use the system red color");
 assert.ok(!css.includes("@media (max-width"), "mobile breakpoint layouts should be removed");
 assert.match(css, /\.app-shell\s*{[\s\S]*height:\s*100dvh;/, "app shell should fit one dynamic viewport");
 assert.ok(css.includes("@media (max-aspect-ratio"), "layout should adapt to narrower display ratios");
@@ -107,6 +110,14 @@ assert.ok(css.includes("@media (max-height"), "layout should compact on shorter 
 assert.match(css, /\.schedule-card\s*{[\s\S]*min-height:\s*0;/, "schedule card should not force overflow");
 assert.match(css, /\.schedule-card\s*{[^}]*overflow-y:\s*auto;/, "schedule card should scroll vertically when many meetings are listed");
 assert.match(css, /\.schedule-table th\s*{[^}]*position:\s*sticky;/, "schedule table header should stay visible while scrolling");
+assert.ok(app.includes('class="schedule-row ${status}"'), "schedule rows should receive status classes from booking state");
+assert.match(css, /\.schedule-row\s*{[\s\S]*border-left:\s*0\.3rem solid transparent;/, "schedule rows should reserve a stable state color strip");
+assert.match(css, /\.schedule-row\.active\s*{[\s\S]*background:\s*linear-gradient\(180deg,\s*#fff0f0,\s*#fff7f7\);/, "active meetings should use a red-tinted row background");
+assert.match(css, /\.schedule-row\.active\s*{[\s\S]*border-left-color:\s*var\(--red-600\);/, "active meetings should use the red state strip");
+assert.match(css, /\.schedule-row\.ended\s*{[\s\S]*background:\s*linear-gradient\(180deg,\s*#f8fafc,\s*#f1f5f9\);/, "ended meetings should use a gray-tinted row background");
+assert.match(css, /\.schedule-row\.ended\s*{[\s\S]*border-left-color:\s*var\(--gray-300\);/, "ended meetings should use the gray state strip");
+assert.match(css, /\.schedule-row\.upcoming\s*{[\s\S]*background:\s*linear-gradient\(180deg,\s*#eef6ff,\s*#f8fbff\);/, "upcoming meetings should use a blue-tinted row background");
+assert.match(css, /\.schedule-row\.upcoming\s*{[\s\S]*border-left-color:\s*var\(--blue-600\);/, "upcoming meetings should use the blue state strip");
 assert.match(css, /\.info-card\s*{[\s\S]*min-height:\s*0;/, "summary cards should not force tall blanks");
 assert.match(css, /\.info-card\s*{[\s\S]*height:\s*100%;/, "summary cards should share one equal height");
 assert.match(css, /\.info-grid\s*{[\s\S]*align-items:\s*stretch;/, "summary card grid should stretch all cards equally");

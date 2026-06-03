@@ -2251,6 +2251,22 @@
     showToast("Data reset. / 数据已重置。", "success");
   }
 
+  function configureDesktopControls() {
+    const exitButton = document.getElementById("exit-app-btn");
+    if (!exitButton || !root.AIHeroDesktop?.isDesktop) {
+      return;
+    }
+    exitButton.classList.remove("hidden");
+    exitButton.addEventListener("click", () => {
+      const confirmed = root.confirm(
+        "Exit the meeting room display app?\n确认退出会议大屏应用吗？"
+      );
+      if (confirmed && typeof root.AIHeroDesktop.requestExit === "function") {
+        root.AIHeroDesktop.requestExit();
+      }
+    });
+  }
+
   function showToast(message, tone = "info") {
     const toast = document.getElementById("toast");
     if (!toast) {
@@ -2323,6 +2339,7 @@
     document.getElementById("delete-booking-btn").addEventListener("click", handleDeleteBooking);
     document.getElementById("export-data-btn").addEventListener("click", exportMeetingRecords);
     document.getElementById("reset-data-btn").addEventListener("click", resetData);
+    configureDesktopControls();
   }
 
   async function initApp() {

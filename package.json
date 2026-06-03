@@ -1,0 +1,50 @@
+{
+  "name": "aihero-meeting-room-booking",
+  "version": "1.0.0",
+  "description": "AI英雄汇会议室预定系统桌面大屏应用",
+  "main": "electron/main.cjs",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "build:win": "electron-builder --win",
+    "test": "node tests/booking.test.js && node tests/layout.test.js && node tests/electron.test.js"
+  },
+  "devDependencies": {
+    "electron": "^31.7.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.aihero.meetingroom",
+    "productName": "AI英雄汇会议室预定系统",
+    "directories": {
+      "output": "dist"
+    },
+    "artifactName": "AIHero-Meeting-Room-Booking-Setup-${version}.${ext}",
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "assets/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "executableName": "AIHero-Meeting-Room-Booking",
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

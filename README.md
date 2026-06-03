@@ -6,6 +6,35 @@
 
 直接用浏览器打开 `index.html` 即可运行，不需要 npm、后端、数据库或构建工具。
 
+## 桌面大屏应用
+
+项目也支持打包为 Windows `.exe` 桌面应用。Electron 版本会以全屏、置顶、kiosk 模式运行，并阻止屏幕自动休眠。
+
+首次使用先安装依赖：
+
+```powershell
+npm install
+```
+
+本地以桌面应用方式运行：
+
+```powershell
+npm run start
+```
+
+打包 Windows 安装程序：
+
+```powershell
+npm run build:win
+```
+
+生成文件位于 `dist` 目录。维护退出方式：
+
+- 触摸屏：点击左上角设置按钮，选择 `Exit App / 退出应用`，确认后退出。
+- 物理键盘：按 `Ctrl + Shift + Q`。
+
+若用于无人值守会议大屏，建议同时在 Windows 中配置 Assigned Access / Kiosk 模式，降低系统弹窗或其他应用抢占前台的概率。
+
 ## 功能
 
 - 当前会议室状态：Available / 空闲、In Use / 使用中
@@ -37,8 +66,8 @@
 
 ## 本地逻辑测试
 
-项目本身不依赖 npm。若要运行附带的核心逻辑测试，可使用本机 Node：
+若已安装依赖，可运行完整测试：
 
 ```powershell
-node tests\booking.test.js
+npm test
 ```

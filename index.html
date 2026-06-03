@@ -288,12 +288,12 @@
         <div id="booking-errors" class="form-errors" aria-live="polite"></div>
 
         <label class="field">
-          <span>Meeting Name / 会议名称</span>
+          <span>Meeting Name / 会议名称 <span class="required-mark" aria-hidden="true">*</span></span>
           <input id="meeting-title" name="title" type="text" maxlength="80" autocomplete="off" required />
         </label>
 
         <label class="field">
-          <span>Booker / 预订人</span>
+          <span>Booker / 预订人 <span class="required-mark" aria-hidden="true">*</span></span>
           <input id="meeting-booker" name="booker" type="text" maxlength="60" autocomplete="off" required />
         </label>
 
@@ -485,6 +485,7 @@
         </p>
         <div class="data-actions">
           <button id="export-data-btn" class="btn btn-secondary" type="button">Export Meeting Records / 导出会议记录</button>
+          <button id="exit-app-btn" class="btn btn-secondary desktop-only hidden" type="button">Exit App / 退出应用</button>
           <button id="reset-data-btn" class="btn btn-danger" type="button">Reset Data / 重置数据</button>
         </div>
       </section>

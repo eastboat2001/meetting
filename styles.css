@@ -414,23 +414,44 @@ button {
 }
 
 .schedule-row {
+  border-left: 0.3rem solid transparent;
   transition:
     background 0.16s ease,
+    border-left-color 0.16s ease,
     transform 0.16s ease,
     box-shadow 0.16s ease;
 }
 
 .schedule-row:hover {
-  background: #f5f9ff;
   transform: translateY(-1px);
 }
 
 .schedule-row.active {
-  background: var(--red-100);
+  border-left-color: var(--red-600);
+  background: linear-gradient(180deg, #fff0f0, #fff7f7);
+}
+
+.schedule-row.active:hover {
+  background: linear-gradient(180deg, #ffe8e8, #fff3f3);
 }
 
 .schedule-row.ended {
+  border-left-color: var(--gray-300);
+  background: linear-gradient(180deg, #f8fafc, #f1f5f9);
   color: var(--gray-500);
+}
+
+.schedule-row.ended:hover {
+  background: linear-gradient(180deg, #f1f5f9, #e9eef5);
+}
+
+.schedule-row.upcoming {
+  border-left-color: var(--blue-600);
+  background: linear-gradient(180deg, #eef6ff, #f8fbff);
+}
+
+.schedule-row.upcoming:hover {
+  background: linear-gradient(180deg, #e2f0ff, #f3f8ff);
 }
 
 .time-cell {
@@ -449,6 +470,16 @@ button {
 
 .schedule-row.ended .meeting-title {
   color: #64748b;
+}
+
+.schedule-row.active .time-cell,
+.schedule-row.active .meeting-title {
+  color: #9f1d20;
+}
+
+.schedule-row.upcoming .time-cell,
+.schedule-row.upcoming .meeting-title {
+  color: #0d4c9d;
 }
 
 .meeting-remark {
@@ -838,6 +869,12 @@ button {
   color: var(--gray-700);
   font-size: 0.88rem;
   font-weight: 760;
+}
+
+.required-mark {
+  margin-left: 0.18rem;
+  color: var(--red-600);
+  font-weight: 880;
 }
 
 .field input,
