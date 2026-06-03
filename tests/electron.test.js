@@ -8,14 +8,22 @@ const html = fs.readFileSync("index.html", "utf8");
 const appJs = fs.readFileSync("app.js", "utf8");
 
 assert.strictEqual(packageJson.main, "electron/main.cjs", "Electron entry should point to the main process");
+assert.strictEqual(packageJson.build.productName, "AIHero Meeting Room Booking", "desktop product name should be ASCII-only");
 assert.ok(packageJson.scripts.start.includes("electron ."), "start script should launch Electron");
 assert.ok(packageJson.scripts["build:win"].includes("electron-builder --win"), "build:win should package a Windows app");
 assert.ok(packageJson.devDependencies.electron, "Electron should be declared as a dev dependency");
 assert.ok(packageJson.devDependencies["electron-builder"], "electron-builder should be declared as a dev dependency");
-assert.deepStrictEqual(packageJson.build.files.sort(), ["app.js", "assets/**/*", "electron/**/*", "index.html", "styles.css"].sort(), "packaged app should include only runtime files");
+assert.deepStrictEqual(packageJson.build.files.sort(), ["app.js", "assets/**/*", "!assets/app-icon-source.png", "electron/**/*", "index.html", "styles.css"].sort(), "packaged app should include only runtime files");
+assert.strictEqual(packageJson.build.afterPack, "scripts/after-pack.cjs", "Windows package should patch the installed app executable icon after packing");
 assert.strictEqual(packageJson.build.artifactName, "AIHero-Meeting-Room-Booking-Setup-${version}.${ext}", "installer filename should be ASCII-only");
 assert.strictEqual(packageJson.build.win.executableName, "AIHero-Meeting-Room-Booking", "Windows executable filename should be ASCII-only");
-assert.strictEqual(packageJson.build.win.signAndEditExecutable, false, "Windows build should avoid signing-tool symlink requirements on locked-down devices");
+assert.strictEqual(packageJson.build.win.icon, "assets/app-icon.ico", "Windows build should use the custom app icon");
+assert.strictEqual(packageJson.build.win.signAndEditExecutable, false, "Windows build should avoid winCodeSign symlink requirements");
+assert.ok(fs.existsSync("assets/app-icon.ico"), "custom Windows icon should exist");
+assert.ok(fs.existsSync("assets/app-icon-source.png"), "custom PNG icon source should exist");
+assert.ok(fs.existsSync("scripts/after-pack.cjs"), "after-pack hook should exist");
+assert.ok(fs.existsSync("scripts/patch-windows-exe-icon.cjs"), "Windows icon patcher should exist");
+assert.ok(fs.readFileSync("scripts/patch-windows-exe-icon.cjs", "utf8").includes("UpdateResource"), "Windows icon patcher should update executable resources");
 
 assert.ok(mainProcess.includes("fullscreen: true"), "main window should start fullscreen");
 assert.ok(mainProcess.includes("kiosk: true"), "main window should run in kiosk mode");

@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "generate:icon": "node scripts/generate-app-icon.cjs",
     "build": "electron-builder --win",
     "build:win": "electron-builder --win",
     "test": "node tests/booking.test.js && node tests/layout.test.js && node tests/electron.test.js"
@@ -16,7 +17,8 @@
   },
   "build": {
     "appId": "com.aihero.meetingroom",
-    "productName": "AI英雄汇会议室预定系统",
+    "productName": "AIHero Meeting Room Booking",
+    "afterPack": "scripts/after-pack.cjs",
     "directories": {
       "output": "dist"
     },
@@ -26,10 +28,12 @@
       "styles.css",
       "app.js",
       "assets/**/*",
+      "!assets/app-icon-source.png",
       "electron/**/*"
     ],
     "win": {
       "executableName": "AIHero-Meeting-Room-Booking",
+      "icon": "assets/app-icon.ico",
       "signAndEditExecutable": false,
       "target": [
         {
