@@ -39,7 +39,10 @@ assert.ok(mainProcess.includes("setWindowOpenHandler"), "app should deny popup w
 assert.ok(mainProcess.includes("will-navigate"), "app should block unexpected navigation away from the local screen");
 assert.ok(mainProcess.includes("ipcMain.on(\"aihero:quit-app\""), "main process should handle touch exit requests");
 assert.ok(mainProcess.includes("globalShortcut.register(\"CommandOrControl+Shift+Q\""), "app should have an explicit maintenance quit shortcut");
-assert.ok(mainProcess.includes("clearTimeout(refocusTimer)"), "refocus timer should be cleared to avoid leaked timers");
+assert.ok(mainProcess.includes("scheduleKioskEnforcement"), "blur handling should only enforce kiosk state");
+assert.ok(mainProcess.includes("moveTop()"), "window should move to top without stealing text-input focus");
+assert.ok(!mainProcess.includes("mainWindow.focus()"), "window blur handling should not steal focus from the Windows touch keyboard");
+assert.ok(mainProcess.includes("clearTimeout(kioskEnforcementTimer)"), "kiosk enforcement timer should be cleared to avoid leaked timers");
 
 assert.ok(preloadProcess.includes("contextBridge.exposeInMainWorld(\"AIHeroDesktop\""), "preload should expose a minimal desktop bridge");
 assert.ok(preloadProcess.includes("isDesktop: true"), "desktop bridge should identify Electron runtime");
@@ -50,5 +53,7 @@ assert.ok(html.includes("Exit App / 退出应用"), "desktop exit button should 
 assert.ok(appJs.includes("configureDesktopControls"), "renderer should configure desktop-only controls");
 assert.ok(appJs.includes("root.AIHeroDesktop?.isDesktop"), "desktop exit button should only appear in Electron");
 assert.ok(appJs.includes("root.AIHeroDesktop.requestExit()"), "renderer should request app exit through the preload bridge");
+assert.ok(appJs.includes("restoreDesktopInputFocus"), "renderer should restore text input focus after touch events");
+assert.ok(appJs.includes('closest?.("input, textarea")'), "desktop input focus restoration should only target editable text controls");
 
 console.log("Electron packaging tests passed.");

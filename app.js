@@ -2253,16 +2253,36 @@
 
   function configureDesktopControls() {
     const exitButton = document.getElementById("exit-app-btn");
-    if (!exitButton || !root.AIHeroDesktop?.isDesktop) {
+    if (!root.AIHeroDesktop?.isDesktop) {
       return;
     }
-    exitButton.classList.remove("hidden");
-    exitButton.addEventListener("click", () => {
-      const confirmed = root.confirm(
-        "Exit the meeting room display app?\n确认退出会议大屏应用吗？"
-      );
-      if (confirmed && typeof root.AIHeroDesktop.requestExit === "function") {
-        root.AIHeroDesktop.requestExit();
+    document.addEventListener("pointerup", restoreDesktopInputFocus);
+    document.addEventListener("touchend", restoreDesktopInputFocus);
+
+    if (exitButton) {
+      exitButton.classList.remove("hidden");
+      exitButton.addEventListener("click", () => {
+        const confirmed = root.confirm(
+          "Exit the meeting room display app?\n确认退出会议大屏应用吗？"
+        );
+        if (confirmed && typeof root.AIHeroDesktop.requestExit === "function") {
+          root.AIHeroDesktop.requestExit();
+        }
+      });
+    }
+  }
+
+  function restoreDesktopInputFocus(event) {
+    const target = event.target?.closest?.("input, textarea");
+    if (!target || target.type === "hidden" || target.disabled || target.readOnly) {
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      if (!document.contains(target) || target.disabled || target.readOnly) {
+        return;
+      }
+      if (document.activeElement !== target) {
+        target.focus({ preventScroll: true });
       }
     });
   }

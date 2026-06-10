@@ -6,7 +6,7 @@ const indexPath = path.join(__dirname, "..", "index.html");
 
 let mainWindow = null;
 let displaySleepBlockerId = null;
-let refocusTimer = null;
+let kioskEnforcementTimer = null;
 
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
@@ -37,14 +37,14 @@ function createMainWindow() {
   mainWindow.once("ready-to-show", () => {
     enforceKioskState();
     mainWindow.show();
-    mainWindow.focus();
+    mainWindow.moveTop();
   });
 
-  mainWindow.on("blur", scheduleRefocus);
+  mainWindow.on("blur", scheduleKioskEnforcement);
   mainWindow.on("leave-full-screen", enforceKioskState);
   mainWindow.on("closed", () => {
-    clearTimeout(refocusTimer);
-    refocusTimer = null;
+    clearTimeout(kioskEnforcementTimer);
+    kioskEnforcementTimer = null;
     mainWindow = null;
   });
 
@@ -70,15 +70,17 @@ function enforceKioskState() {
   mainWindow.setAlwaysOnTop(true, "screen-saver");
 }
 
-function scheduleRefocus() {
-  clearTimeout(refocusTimer);
-  refocusTimer = setTimeout(() => {
-    refocusTimer = null;
+function scheduleKioskEnforcement() {
+  clearTimeout(kioskEnforcementTimer);
+  kioskEnforcementTimer = setTimeout(() => {
+    kioskEnforcementTimer = null;
     if (!mainWindow || mainWindow.isDestroyed()) {
       return;
     }
     enforceKioskState();
-    mainWindow.focus();
+    if (typeof mainWindow.moveTop === "function") {
+      mainWindow.moveTop();
+    }
   }, 120);
 }
 
@@ -127,8 +129,8 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  clearTimeout(refocusTimer);
-  refocusTimer = null;
+  clearTimeout(kioskEnforcementTimer);
+  kioskEnforcementTimer = null;
   stopDisplaySleepBlocker();
   globalShortcut.unregisterAll();
 });
