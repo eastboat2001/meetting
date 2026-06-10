@@ -1951,6 +1951,61 @@
     showToast("Meeting records exported. / 会议记录已导出。", "success");
   }
 
+  async function importMeetingRecordsFile(event) {
+    const input = event.target;
+    const file = input?.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const bytes = await readFileAsArrayBuffer(file);
+      const imported = parseMeetingRecordsWorkbook(bytes, new Date());
+      if (!imported.bookings.length) {
+        showToast("No valid meeting records found. / 未找到有效会议记录。", "error");
+        return;
+      }
+
+      const existingCount = loadBookings().length;
+      const message = existingCount
+        ? `Import ${imported.bookings.length} meeting records and replace ${existingCount} current records?\n导入 ${imported.bookings.length} 条会议记录，并替换当前 ${existingCount} 条记录吗？`
+        : `Import ${imported.bookings.length} meeting records?\n确认导入 ${imported.bookings.length} 条会议记录吗？`;
+      if (!root.confirm(message)) {
+        return;
+      }
+
+      saveBookings(imported.bookings);
+      state.bookings = loadBookings();
+      closeDialog(document.getElementById("data-modal"));
+      renderApp();
+      if (document.getElementById("schedule-preview-modal")?.open) {
+        renderSchedulePreviewModal();
+      }
+      const skippedText = imported.skippedRows
+        ? ` Skipped ${imported.skippedRows} invalid rows. / 已跳过 ${imported.skippedRows} 条无效记录。`
+        : "";
+      showToast(`Meeting records imported. / 会议记录已导入。${skippedText}`, "success");
+    } catch (error) {
+      showToast(error.message || "Import failed. / 导入失败。", "error");
+    } finally {
+      if (input) {
+        input.value = "";
+      }
+    }
+  }
+
+  function readFileAsArrayBuffer(file) {
+    if (typeof file.arrayBuffer === "function") {
+      return file.arrayBuffer();
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve(reader.result));
+      reader.addEventListener("error", () => reject(reader.error || new Error("Failed to read file.")));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
   function createMeetingRecordsWorkbook(bookings = [], exportedAt = new Date()) {
     const rows = [meetingRecordExportHeaders].concat(
       sortBookings(bookings.filter(isBookingLike)).map(getMeetingRecordExportRow)
@@ -2001,6 +2056,81 @@
       fileName: `aihero-meeting-records-${formatInputDate(exportedAt)}.xlsx`,
       mimeType: XLSX_MIME_TYPE,
       bytes: createZipArchive(files, exportedAt),
+    };
+  }
+
+  function parseMeetingRecordsWorkbook(bytes, importedAt = new Date()) {
+    const files = readZipStoredFiles(bytes);
+    const worksheetXml = files["xl/worksheets/sheet1.xml"];
+    if (!worksheetXml) {
+      throw new Error("Invalid meeting records Excel file. / 无法识别会议记录 Excel 文件。");
+    }
+
+    const rows = parseWorksheetRows(worksheetXml);
+    if (rows.length < 2) {
+      return { bookings: [], skippedRows: 0, totalRows: 0 };
+    }
+
+    const header = rows[0].map((value) => normalizeCellText(value));
+    const indexes = {
+      date: header.indexOf("Date / 日期"),
+      startTime: header.indexOf("Start Time / 开始时间"),
+      endTime: header.indexOf("End Time / 结束时间"),
+      title: header.indexOf("Meeting Name / 会议名称"),
+      booker: header.indexOf("Booker / 预订人"),
+      remark: header.indexOf("Remark / 备注"),
+    };
+    const requiredIndexes = [indexes.date, indexes.startTime, indexes.endTime, indexes.title, indexes.booker];
+    if (requiredIndexes.some((index) => index < 0)) {
+      throw new Error("Invalid meeting records headers. / 会议记录表头不正确。");
+    }
+
+    const timestamp = toLocalIso(importedAt instanceof Date ? importedAt : new Date());
+    let skippedRows = 0;
+    const bookings = rows.slice(1).reduce((items, row, rowOffset) => {
+      const record = {
+        date: normalizeCellText(row[indexes.date]),
+        startTime: normalizeCellText(row[indexes.startTime]),
+        endTime: normalizeCellText(row[indexes.endTime]),
+        title: normalizeCellText(row[indexes.title]),
+        booker: normalizeCellText(row[indexes.booker]),
+        remark: indexes.remark >= 0 ? normalizeCellText(row[indexes.remark]) : "",
+      };
+
+      const start = createLocalDateTime(record.date, record.startTime);
+      const end = createLocalDateTime(record.date, record.endTime);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(record.date) ||
+        Number.isNaN(parseTimeToMinutes(record.startTime)) ||
+        Number.isNaN(parseTimeToMinutes(record.endTime)) ||
+        Number.isNaN(start.getTime()) ||
+        Number.isNaN(end.getTime()) ||
+        end <= start ||
+        !record.title ||
+        !record.booker
+      ) {
+        skippedRows += 1;
+        return items;
+      }
+
+      const idSource = `${record.date}|${record.startTime}|${record.endTime}|${record.title}|${record.booker}|${rowOffset}`;
+      items.push({
+        id: `imported_booking_${rowOffset + 1}_${hashText(idSource).toString(36)}`,
+        title: record.title,
+        booker: record.booker,
+        start: toLocalIso(start),
+        end: toLocalIso(end),
+        remark: record.remark,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      return items;
+    }, []);
+
+    return {
+      bookings: sortBookings(bookings),
+      skippedRows,
+      totalRows: rows.length - 1,
     };
   }
 
@@ -2065,6 +2195,114 @@
     return `<c r="${cellRef}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
   }
 
+  function readZipStoredFiles(input) {
+    const bytes = normalizeBytes(input);
+    if (bytes.length < 4 || readUint32(bytes, 0) !== 0x04034b50) {
+      throw new Error("Invalid Excel file. / Excel 文件无效。");
+    }
+
+    const files = {};
+    let offset = 0;
+    while (offset + 30 <= bytes.length && readUint32(bytes, offset) === 0x04034b50) {
+      const flags = readUint16(bytes, offset + 6);
+      const method = readUint16(bytes, offset + 8);
+      const compressedSize = readUint32(bytes, offset + 18);
+      const uncompressedSize = readUint32(bytes, offset + 22);
+      const fileNameLength = readUint16(bytes, offset + 26);
+      const extraLength = readUint16(bytes, offset + 28);
+      const nameStart = offset + 30;
+      const dataStart = nameStart + fileNameLength + extraLength;
+      const dataEnd = dataStart + compressedSize;
+
+      if (dataEnd > bytes.length) {
+        throw new Error("Invalid Excel file structure. / Excel 文件结构无效。");
+      }
+      if ((flags & 0x08) !== 0) {
+        throw new Error("Unsupported Excel package format. / 不支持该 Excel 包格式。");
+      }
+      if (method !== 0) {
+        throw new Error("Only meeting records exported by this app can be imported. / 仅支持导入本系统导出的会议记录。");
+      }
+      if (compressedSize !== uncompressedSize) {
+        throw new Error("Invalid Excel file size metadata. / Excel 文件大小信息无效。");
+      }
+
+      const name = decodeUtf8(bytes.slice(nameStart, nameStart + fileNameLength));
+      files[name] = decodeUtf8(bytes.slice(dataStart, dataEnd));
+      offset = dataEnd;
+    }
+
+    if (!Object.keys(files).length) {
+      throw new Error("Invalid Excel file. / Excel 文件无效。");
+    }
+    return files;
+  }
+
+  function parseWorksheetRows(worksheetXml) {
+    const rows = [];
+    const rowPattern = /<row\b[^>]*>([\s\S]*?)<\/row>/g;
+    let rowMatch;
+    while ((rowMatch = rowPattern.exec(worksheetXml))) {
+      const row = [];
+      const cellPattern = /<c\b([^>]*)>([\s\S]*?)<\/c>/g;
+      let cellMatch;
+      while ((cellMatch = cellPattern.exec(rowMatch[1]))) {
+        const refMatch = /\br="([A-Z]+)\d+"/.exec(cellMatch[1]);
+        const columnIndex = refMatch ? columnNameToNumber(refMatch[1]) - 1 : row.length;
+        row[columnIndex] = extractCellText(cellMatch[2]);
+      }
+      rows.push(row.map((value) => value ?? ""));
+    }
+    return rows;
+  }
+
+  function extractCellText(cellXml) {
+    const values = [];
+    const textPattern = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;
+    let textMatch;
+    while ((textMatch = textPattern.exec(cellXml))) {
+      values.push(decodeXml(textMatch[1]));
+    }
+    return values.join("");
+  }
+
+  function normalizeCellText(value) {
+    return String(value ?? "").replace(/\r\n/g, "\n").trim();
+  }
+
+  function columnNameToNumber(name) {
+    return String(name || "")
+      .split("")
+      .reduce((number, char) => number * 26 + char.charCodeAt(0) - 64, 0);
+  }
+
+  function readUint16(bytes, offset) {
+    return bytes[offset] | (bytes[offset + 1] << 8);
+  }
+
+  function readUint32(bytes, offset) {
+    return (
+      (bytes[offset] |
+        (bytes[offset + 1] << 8) |
+        (bytes[offset + 2] << 16) |
+        (bytes[offset + 3] << 24)) >>>
+      0
+    );
+  }
+
+  function normalizeBytes(input) {
+    if (input instanceof Uint8Array) {
+      return input;
+    }
+    if (input instanceof ArrayBuffer) {
+      return new Uint8Array(input);
+    }
+    if (ArrayBuffer.isView(input)) {
+      return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    }
+    throw new Error("Invalid file bytes. / 文件内容无效。");
+  }
+
   function columnNumberToName(columnNumber) {
     let value = columnNumber;
     let name = "";
@@ -2083,6 +2321,34 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&apos;");
+  }
+
+  function decodeXml(value) {
+    return String(value ?? "").replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (match, entity) => {
+      const lower = entity.toLowerCase();
+      if (lower === "amp") {
+        return "&";
+      }
+      if (lower === "lt") {
+        return "<";
+      }
+      if (lower === "gt") {
+        return ">";
+      }
+      if (lower === "quot") {
+        return '"';
+      }
+      if (lower === "apos") {
+        return "'";
+      }
+      if (lower.startsWith("#x")) {
+        return String.fromCodePoint(Number.parseInt(lower.slice(2), 16));
+      }
+      if (lower.startsWith("#")) {
+        return String.fromCodePoint(Number.parseInt(lower.slice(1), 10));
+      }
+      return match;
+    });
   }
 
   function createZipArchive(files, modifiedAt = new Date()) {
@@ -2211,6 +2477,24 @@
       bytes[index] = encoded.charCodeAt(index);
     }
     return bytes;
+  }
+
+  function decodeUtf8(bytes) {
+    if (typeof TextDecoder !== "undefined") {
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(bytes).toString("utf8");
+    }
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 1) {
+      binary += String.fromCharCode(bytes[index]);
+    }
+    return decodeURIComponent(escape(binary));
+  }
+
+  function hashText(value) {
+    return crc32(encodeUtf8(value));
   }
 
   function concatBytes(parts) {
@@ -2357,6 +2641,10 @@
       }
     });
     document.getElementById("delete-booking-btn").addEventListener("click", handleDeleteBooking);
+    document.getElementById("import-data-btn").addEventListener("click", () => {
+      document.getElementById("import-data-input").click();
+    });
+    document.getElementById("import-data-input").addEventListener("change", importMeetingRecordsFile);
     document.getElementById("export-data-btn").addEventListener("click", exportMeetingRecords);
     document.getElementById("reset-data-btn").addEventListener("click", resetData);
     configureDesktopControls();
@@ -2395,6 +2683,7 @@
     loadHolidayCache,
     saveHolidayCache,
     createMeetingRecordsWorkbook,
+    parseMeetingRecordsWorkbook,
     shouldRefreshHolidays,
     refreshHolidaysIfNeeded,
     fetchHolidayProviders,

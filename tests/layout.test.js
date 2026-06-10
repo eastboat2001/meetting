@@ -56,11 +56,12 @@ assert.ok(holidayCard.includes('<svg class="ui-icon"') && holidayCard.includes('
 assert.ok(app.includes("https://date.nager.at/api/v3/PublicHolidays"), "holiday card should use a real public-holiday API source");
 assert.ok(app.includes('code: "MY"') && app.includes('code: "CN"'), "default holiday countries should include Malaysia and China");
 assert.ok(app.includes("nager-date"), "normalized holiday data should record the real API source");
-assert.ok(!html.includes("import-data-input"), "settings modal should not expose an import control");
-assert.ok(!html.includes("Import Data / 导入数据"), "settings modal should not include an import action");
+assert.ok(html.includes('id="import-data-input"'), "settings modal should expose a meeting-record import file input");
+assert.ok(html.includes("Import Meeting Records / 导入会议记录"), "settings modal should include a meeting-record import action");
 assert.ok(!app.includes("function importData"), "app should not keep JSON import behavior");
 assert.ok(html.includes("Export Meeting Records / 导出会议记录"), "settings modal should export meeting records only");
 assert.ok(app.includes("exportMeetingRecords"), "export action should target meeting records instead of full app data");
+assert.ok(app.includes("importMeetingRecordsFile"), "import action should target meeting-record Excel files");
 assert.ok(!app.includes("roomConfig: loadRoomConfig()"), "meeting-record export should not include room configuration");
 assert.ok(!app.includes("holidayCache: loadHolidayCache()"), "meeting-record export should not include holiday cache data");
 assert.ok(!app.includes('"♙"') && !app.includes('"▣"') && !app.includes('"▤"') && !app.includes('"⌁"'), "room detail feature icons should use SVG instead of font glyphs");

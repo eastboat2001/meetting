@@ -481,9 +481,11 @@
           <button class="icon-close" type="button" data-close-data aria-label="Close">×</button>
         </div>
         <p class="data-note">
-          Export meeting records as Excel, or reset the localStorage data used by this screen.
+          Export meeting records as Excel, import exported meeting records, or reset the localStorage data used by this screen.
         </p>
         <div class="data-actions">
+          <input id="import-data-input" class="hidden" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+          <button id="import-data-btn" class="btn btn-secondary" type="button">Import Meeting Records / 导入会议记录</button>
           <button id="export-data-btn" class="btn btn-secondary" type="button">Export Meeting Records / 导出会议记录</button>
           <button id="exit-app-btn" class="btn btn-secondary desktop-only hidden" type="button">Exit App / 退出应用</button>
           <button id="reset-data-btn" class="btn btn-danger" type="button">Reset Data / 重置数据</button>

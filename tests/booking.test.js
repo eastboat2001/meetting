@@ -360,4 +360,39 @@ assert.ok(!workbookText.includes("roomConfig"), "xlsx export should not include 
 assert.ok(!workbookText.includes("holidayCache"), "xlsx export should not include holiday cache");
 assert.ok(!workbookText.includes("holidayLastUpdated"), "xlsx export should not include holiday refresh state");
 
+const importedWorkbook = booking.parseMeetingRecordsWorkbook(
+  exportedWorkbook.bytes,
+  new Date(iso("2026-06-03", "09:00"))
+);
+assert.strictEqual(importedWorkbook.bookings.length, 1, "meeting-record import should restore one exported booking");
+assert.deepStrictEqual(
+  importedWorkbook.bookings.map((item) => ({
+    title: item.title,
+    booker: item.booker,
+    start: item.start,
+    end: item.end,
+    remark: item.remark,
+  })),
+  [
+    {
+      title: "Planning & Review / 规划评审",
+      booker: "Ada <Lead>",
+      start: iso("2026-06-02", "09:30"),
+      end: iso("2026-06-02", "10:30"),
+      remark: "Discuss scope & risks",
+    },
+  ],
+  "meeting-record import should preserve exported field values"
+);
+assert.ok(
+  importedWorkbook.bookings[0].id.startsWith("imported_booking_"),
+  "meeting-record import should create local booking ids"
+);
+assert.strictEqual(importedWorkbook.skippedRows, 0, "valid exported rows should not be skipped");
+assert.throws(
+  () => booking.parseMeetingRecordsWorkbook(booking.createMeetingRecordsWorkbook([], new Date()).bytes.slice(0, 20)),
+  /Invalid|无法|not/,
+  "invalid workbook bytes should be rejected with a clear error"
+);
+
 console.log("All booking logic tests passed.");
